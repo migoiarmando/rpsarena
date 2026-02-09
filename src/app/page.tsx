@@ -673,6 +673,23 @@ function GameScreen({
   const myHp = isPlayer1 ? healthBars.p1Hp : healthBars.p2Hp;
   const opponentHealthBar = isPlayer1 ? healthBars.p2 : healthBars.p1;
   const opponentHp = isPlayer1 ? healthBars.p2Hp : healthBars.p1Hp;
+  
+  // Personalize the round message to replace "Player 1" and "Player 2" with "You" and "Opponent"
+  // This makes the streak information more user-friendly
+  const personalizedMessage = roundView.lastMessage
+    ? roundView.lastMessage
+        .replace(/Player 1 wins this round!/g, isPlayer1 ? "You win this round!" : "Opponent wins this round!")
+        .replace(/Player 2 wins this round!/g, isPlayer1 ? "Opponent wins this round!" : "You win this round!")
+        .replace(/Player 1 Streak: (\d+), Player 2 Streak: (\d+)/g, (match, p1Streak, p2Streak) => {
+          if (isPlayer1) {
+            return `Your Streak: ${p1Streak}, Opponent Streak: ${p2Streak}`;
+          } else {
+            return `Opponent Streak: ${p1Streak}, Your Streak: ${p2Streak}`;
+          }
+        })
+        .replace(/Player 1/g, isPlayer1 ? "You" : "Opponent")
+        .replace(/Player 2/g, isPlayer1 ? "Opponent" : "You")
+    : "";
 
   return (
     <div>
@@ -741,10 +758,10 @@ Opponent HP: [${opponentHealthBar}] (${opponentHp})`}
       )}
 
       {/* Show round message prominently when available */}
-      {roundView.lastMessage && (
+      {personalizedMessage && (
         <div className="mt-4 border-t border-green-700 pt-4">
           <pre className="whitespace-pre-wrap text-2xl text-green-300">
-            {roundView.lastMessage}
+            {personalizedMessage}
           </pre>
         </div>
       )}
