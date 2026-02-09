@@ -16,14 +16,53 @@ interface RoundViewState {
   state: GameState;
 }
 
-const WELCOME_ART = String.raw`
-  ____  ____   ____       _                         
- |  _ \|  _ \ / ___|_   _| | ___  _ __   __ _ _ __  
- | |_) | |_) | |  _| | | | |/ _ \| '_ \ / _\` | '_ \ 
- |  _ <|  __/| |_| | |_| | | (_) | | | | (_| | | | |
- |_| \_\_|    \____|\__,_|_|\___/|_| |_|\__,_|_| |_|
 
- Rock Paper Scissors Arena (web)
+const WELCOME_ART = String.raw`
+ .----------------.  .----------------.  .----------------.                    .----------------.  .----------------.  .----------------.  .-----------------. .----------------. 
+| .--------------. || .--------------. || .--------------. |                  | .--------------. || .--------------. || .--------------. || .--------------. || .--------------. |
+| |  _______     | || |   ______     | || |    _______   | |                  | |      __      | || |  _______     | || |  _________   | || | ____  _____  | || |      __      | |
+| | |_   __ \    | || |  |_   __ \   | || |   /  ___  |  | |                  | |     /  \     | || | |_   __ \    | || | |_   ___  |  | || ||_   \|_   _| | || |     /  \     | |
+| |   | |__) |   | || |    | |__) |  | || |  |  (__ \_|  | |                  | |    / /\ \    | || |   | |__) |   | || |   | |_  \_|  | || |  |   \ | |   | || |    / /\ \    | |
+| |   |  __ /    | || |    |  ___/   | || |   '.___\`-.   | |                  | |   / ____ \   | || |   |  __ /    | || |   |  _|  _   | || |  | |\ \| |   | || |   / ____ \   | |
+| |  _| |  \ \_  | || |   _| |_      | || |  |\`\____) |  | |                  | | _/ /    \ \_ | || |  _| |  \ \_  | || |  _| |___/ |  | || | _| |_\   |_  | || | _/ /    \ \_ | |
+| | |____| |___| | || |  |_____|     | || |  |_______.'  | |                  | ||____|  |____|| || | |____| |___| | || | |_________|  | || ||_____\____| | || ||____|  |____|| |
+| |              | || |              | || |              | |                  | |              | || |              | || |              | || |              | || |              | |
+| '--------------' || '--------------' || '--------------' |                  | '--------------' || '--------------' || '--------------' || '--------------' || '--------------' |
+ '----------------'  '----------------'  '----------------'                    '----------------'  '----------------'  '----------------'  '----------------'  '----------------' 
+                                                                                 ..   .:+*+:..              
+                                                                               .*%##-..%:.:#-........       
+                                                                             ..%:..+*.=%. .*=..*#+#*..      
+                                                                              :%. .=#:+#. .*-.:%:..*-.      
+               .....                                                          .%.  :%:**. .#-.*+. .%:       
+       ..:=*###%#++*@=:....                                                   .%=. .%:**...#-.%:..+*.+*=..  
+       .%=....%.   .=::=##-..                                                  +#. .*=#*  :#:+#..:#+%-.-*:. 
+       -%.    +.   .=:.  .%=...                                        ......  .%. .+##*. :#:%-..+#%-..=*.  
+       -%.    =-   .-:   .*###*-..                                   ..-%##*=...%-  :%#*..:#=%..:#@=..-%:.  
+     ..-%...::++:.. -:  ..+:..-%-.                                    .**...=%:.+*...=*=. .*%*..=@*:..%=.   
+     .:*#===-...-+-.=:  .--. .=%-.                                     .**. .+*:%.        .....*%-..+*.    
+     .%-....     .:=%.  .+-...=%-.                                      .#+..:%=%..            .. .-%.     
+    .=%..        ....-*.-=.  .##:.                                       :#-..-#%-:=:..           ..%-.     
+    .+*.  ..:=-......+*+=+=..=**..                                       .=*.. .....:=*..         .+#.      
+    .*+.  ..:..:-=--:......::.-*.          ...                           ..*=.      ...-+.        -%:       
+    .*+.   .. .. .. .        .-*..        .+%#=..   ..::...             ..=%:.       ..=:.      :#=.       
+     .*%-..                 ..#+.       ..%-...+*. .:*+::-#+.           ..=%:        ...      .++..       
+       .-%#-..            ..=@-.         .%:  .-#. .=*:.  =*.              :%-.             ..+*.         
+         ..:*@%+=-:....-=#@*:.           .%-   -%:..++.. .*+.               .+@=.............#+.          
+              ....-==--....              .#=.  :%:.:#-.  .%:.                 .:+%#%%%%%%%%+..           
+                                         .**.  :#:.=*.  .=#.                                        
+                                          =%.  .#-.*=.  .%=.                                        
+                                          :%.  .*:%:. .:@.                                         
+                                          .%:  .+#**.. .**.                                         
+                                          .%-   ..:.. .-##*-.                                        
+                                          .#=.       .=-..:**..                                      
+                                         .-%. ....  .-=.. .+=**.                                     
+                                         :%*==----+=:=:. .-+..#-                                     
+                                        .*+..     ..:=+-..*..:#:                                     
+                                        .#-. .....   .:+.*:..*=.                                     
+                                        .#- .=*--**==*=.-#:.+*..                                     
+                                        .*+...   .       ..-#-.                                      
+                                        .:@:..           ..*+.                                       
+                                          -%=..........:-*%=..                                        
 `;
 
 export default function Home() {
@@ -39,16 +78,6 @@ export default function Home() {
   const [opponentMove, setOpponentMove] = useState<Move | null>(null);
   const [playAgainChoice, setPlayAgainChoice] = useState<"yes" | "no" | null>(null);
   const [playAgainTimer, setPlayAgainTimer] = useState(15);
-
-  // Fake local-only lobby for now; will be replaced by Pusher-powered lobby.
-  useEffect(() => {
-    if (appState === "WELCOME") {
-      const timeout = setTimeout(() => {
-        setAppState("ENTER_NAME");
-      }, 1500);
-      return () => clearTimeout(timeout);
-    }
-  }, [appState]);
 
   const healthBars = useMemo(() => {
     const state = roundView?.state ?? createInitialState();
@@ -168,7 +197,9 @@ export default function Home() {
 
         {/* Main content area: height and base font size bumped up for better readability */}
         <div className="h-[620px] overflow-y-auto px-4 py-3 font-mono text-2xl leading-relaxed">
-          {appState === "WELCOME" && <WelcomeScreen />}
+          {appState === "WELCOME" && (
+            <WelcomeScreen onStart={() => setAppState("ENTER_NAME")} />
+          )}
           {appState === "ENTER_NAME" && (
             <NameScreen
               tempName={tempName}
@@ -207,11 +238,26 @@ export default function Home() {
   );
 }
 
-function WelcomeScreen() {
+interface WelcomeScreenProps {
+  onStart: () => void;
+}
+
+function WelcomeScreen({ onStart }: WelcomeScreenProps) {
   return (
-    <pre className="whitespace-pre text-[10px] leading-[10px]">
-      {WELCOME_ART}
-    </pre>
+    <div>
+      <pre className="whitespace-pre text-[10px] leading-[10px]">
+        {WELCOME_ART}
+      </pre>
+      {/* Button to proceed from the ASCII welcome screen to the name entry step */}
+      <div className="mt-4 flex justify-center">
+        <button
+          className="border border-green-500 px-4 py-1 text-xl leading-none hover:bg-green-500 hover:text-black"
+          onClick={onStart}
+        >
+          [ PLAY GAME ]
+        </button>
+      </div>
+    </div>
   );
 }
 
