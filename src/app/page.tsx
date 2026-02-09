@@ -16,7 +16,6 @@ interface RoundViewState {
   state: GameState;
 }
 
-
 const WELCOME_ART = String.raw`
  .----------------.  .----------------.  .----------------.                    .----------------.  .----------------.  .----------------.  .-----------------. .----------------. 
 | .--------------. || .--------------. || .--------------. |                  | .--------------. || .--------------. || .--------------. || .--------------. || .--------------. |
@@ -76,7 +75,9 @@ export default function Home() {
   const [roundView, setRoundView] = useState<RoundViewState | null>(null);
   const [myMove, setMyMove] = useState<Move | null>(null);
   const [opponentMove, setOpponentMove] = useState<Move | null>(null);
-  const [playAgainChoice, setPlayAgainChoice] = useState<"yes" | "no" | null>(null);
+  const [playAgainChoice, setPlayAgainChoice] = useState<"yes" | "no" | null>(
+    null,
+  );
   const [playAgainTimer, setPlayAgainTimer] = useState(15);
 
   const healthBars = useMemo(() => {
@@ -137,7 +138,11 @@ export default function Home() {
     const res = await fetch("/api/rooms/move", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roomId: currentRoomId, playerId: playerName, move }),
+      body: JSON.stringify({
+        roomId: currentRoomId,
+        playerId: playerName,
+        move,
+      }),
     });
     if (!res.ok) return;
     const data = await res.json();
@@ -181,9 +186,9 @@ export default function Home() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black text-green-400">
+    <div className="flex min-h-screen items-center justify-center bg-black text-green-400 px-4 py-6">
       {/* Outer terminal container: slightly wider and taller for better readability */}
-      <div className="w-full max-w-4xl border border-green-500 bg-black/90 shadow-lg">
+      <div className="w-full max-w-6xl border border-green-500 bg-black/90 shadow-lg">
         <div className="relative flex items-center border-b border-green-500 px-3 py-1 text-xs">
           <span className="flex items-center gap-1">
             <span className="inline-block h-4 w-4 rounded-full bg-red-500" />
@@ -195,8 +200,8 @@ export default function Home() {
           </span>
         </div>
 
-        {/* Main content area: height and base font size bumped up for better readability */}
-        <div className="h-[620px] overflow-y-auto px-4 py-3 font-mono text-2xl leading-relaxed">
+        {/* Main content area: let height be driven by content so we avoid an inner scrollbar */}
+        <div className="px-8 py-6 font-mono text-3xl leading-relaxed">
           {appState === "WELCOME" && (
             <WelcomeScreen onStart={() => setAppState("ENTER_NAME")} />
           )}
@@ -245,13 +250,13 @@ interface WelcomeScreenProps {
 function WelcomeScreen({ onStart }: WelcomeScreenProps) {
   return (
     <div>
-      <pre className="whitespace-pre text-[10px] leading-[10px]">
+      <pre className="whitespace-pre text-[14px] leading-[14px]">
         {WELCOME_ART}
       </pre>
       {/* Button to proceed from the ASCII welcome screen to the name entry step */}
       <div className="mt-4 flex justify-center">
         <button
-          className="border border-green-500 px-4 py-1 text-xl leading-none hover:bg-green-500 hover:text-black"
+          className="border border-green-500 px-6 py-2 text-2xl leading-none hover:bg-green-500 hover:text-black"
           onClick={onStart}
         >
           [ PLAY GAME ]
@@ -267,7 +272,11 @@ interface NameScreenProps {
   onConfirm: () => void;
 }
 
-function NameScreen({ tempName, onTempNameChange, onConfirm }: NameScreenProps) {
+function NameScreen({
+  tempName,
+  onTempNameChange,
+  onConfirm,
+}: NameScreenProps) {
   return (
     <div>
       <p>Welcome to RPS Arena!</p>
@@ -284,7 +293,7 @@ function NameScreen({ tempName, onTempNameChange, onConfirm }: NameScreenProps) 
           autoFocus
         />
         <button
-          className="ml-4 border border-green-500 px-4 py-1 text-xl leading-none hover:bg-green-500 hover:text-black"
+          className="ml-4 border border-green-500 px-6 py-2 text-2xl leading-none hover:bg-green-500 hover:text-black"
           onClick={onConfirm}
         >
           OK
@@ -305,15 +314,17 @@ function LobbyScreen({ playerName, rooms, onCreateOrJoin }: LobbyScreenProps) {
     <div>
       {/* Slightly larger lobby headings for better emphasis at the new scale */}
       <p className="text-4xl">{`Welcome, ${playerName}.`}</p>
-      <p className="mt-1 text-2xl">Lobby - available rooms:</p>
+      <p className="mt-1 text-3xl">Lobby - available rooms:</p>
       <div className="mt-2">
-        {rooms.length === 0 && <p className="text-xl">No rooms yet. Create one to start.</p>}
+        {rooms.length === 0 && (
+          <p className="text-2xl">No rooms yet. Create one to start.</p>
+        )}
         {rooms.map((room) => (
           <div
             key={room.id}
             className="mt-1 flex items-center justify-between border border-green-700 bg-black/60 px-2 py-1"
           >
-            <span className="text-xl">
+            <span className="text-2xl">
               Room <span className="font-bold">{room.id}</span> -{" "}
               {room.players.length}/2 players - {room.status}
             </span>
@@ -328,14 +339,17 @@ function LobbyScreen({ playerName, rooms, onCreateOrJoin }: LobbyScreenProps) {
       </div>
       <div className="mt-3">
         <button
-          className="border border-green-500 px-3 py-1 text-xl hover:bg-green-500 hover:text-black"
-          onClick={() => onCreateOrJoin(`room-${Math.floor(Math.random() * 1000)}`)}
+          className="border border-green-500 px-5 py-2 text-2xl hover:bg-green-500 hover:text-black"
+          onClick={() =>
+            onCreateOrJoin(`room-${Math.floor(Math.random() * 1000)}`)
+          }
         >
           [ CREATE RANDOM ROOM ]
         </button>
       </div>
-      <p className="mt-4 text-xl text-green-500">
-        (Rooms are stored in-memory on the server for now; Pusher-based realtime updates will be added next.)
+      <p className="mt-4 text-2xl text-green-500">
+        (Rooms are stored in-memory on the server for now; Pusher-based realtime
+        updates will be added next.)
       </p>
     </div>
   );
@@ -362,35 +376,36 @@ function GameScreen({
 }: GameScreenProps) {
   return (
     <div>
-      <p>
-        {`Room: ${roomId ?? "N/A"} | You are: ${playerName}`}
-      </p>
+      <p>{`Room: ${roomId ?? "N/A"} | You are: ${playerName}`}</p>
       <p className="mt-2">Health:</p>
-      <pre className="mt-1 text-xl">
-{`Your HP:      [${healthBars.p1}] (${healthBars.p1Hp})
+      <pre className="mt-1 text-2xl">
+        {`Your HP:      [${healthBars.p1}] (${healthBars.p1Hp})
 Opponent HP: [${healthBars.p2}] (${healthBars.p2Hp})`}
       </pre>
 
       <div className="mt-3">
-        <p className="text-xl">Enter your choice (Rock [r], Paper [p], Scissors [s]):</p>
+        <p className="text-2xl">
+          Enter your choice (Rock [r], Paper [p], Scissors [s]):
+        </p>
         <div className="mt-2 flex flex-wrap gap-2">
           <AsciiButton label="ROCK" onClick={() => onMove("r")} />
           <AsciiButton label="PAPER" onClick={() => onMove("p")} />
           <AsciiButton label="SCISSORS" onClick={() => onMove("s")} />
         </div>
-        <p className="mt-2 text-md text-green-500">
-          You can also press r / p / s on your keyboard (to be wired with real networking).
+        <p className="mt-2 text-xl text-green-500">
+          You can also press r / p / s on your keyboard (to be wired with real
+          networking).
         </p>
       </div>
 
-      <div className="mt-3 text-md">
+      <div className="mt-3 text-xl">
         <p>{`Last move: you -> ${moveLabel(myMove)}, opponent -> ${moveLabel(
-          opponentMove
+          opponentMove,
         )}`}</p>
       </div>
 
       {roundView.lastMessage && (
-        <pre className="mt-3 whitespace-pre-wrap text-xl">
+        <pre className="mt-3 whitespace-pre-wrap text-2xl">
           {roundView.lastMessage}
         </pre>
       )}
@@ -407,8 +422,8 @@ interface PlayAgainScreenProps {
 function PlayAgainScreen({ timer, choice, onChoose }: PlayAgainScreenProps) {
   return (
     <div>
-      <p className="text-xl">Game over.</p>
-      <p className="mt-1 text-xl">Play again? Timer: {timer}s</p>
+      <p className="text-2xl">Game over.</p>
+      <p className="mt-1 text-2xl">Play again? Timer: {timer}s</p>
       <div className="mt-2 flex gap-2">
         <AsciiButton
           label="YES"
@@ -421,9 +436,9 @@ function PlayAgainScreen({ timer, choice, onChoose }: PlayAgainScreenProps) {
           active={choice === "no"}
         />
       </div>
-      <p className="mt-2 text-sm text-green-500">
-        In the full version, a rematch will only start if both players agree before the timer runs
-        out; otherwise you&apos;ll return to the lobby.
+      <p className="mt-2 text-lg text-green-500">
+        In the full version, a rematch will only start if both players agree
+        before the timer runs out; otherwise you&apos;ll return to the lobby.
       </p>
     </div>
   );
@@ -440,7 +455,7 @@ function AsciiButton({ label, onClick, active }: AsciiButtonProps) {
   return (
     <button
       onClick={onClick}
-      className={`cursor-pointer border border-green-500 bg-black/60 px-3 py-1 text-base hover:bg-green-500 hover:text-black ${
+      className={`cursor-pointer border border-green-500 bg-black/60 px-5 py-2 text-xl hover:bg-green-500 hover:text-black ${
         active ? "bg-green-600 text-black" : ""
       }`}
     >
@@ -460,4 +475,3 @@ function moveLabel(move: Move | null): string {
   if (move === "p") return "PAPER";
   return "SCISSORS";
 }
-
