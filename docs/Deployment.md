@@ -6,9 +6,28 @@ This document explains how to run the app locally and deploy it to Render with s
 
 ---
 
-## 1. Local setup
+## 1. Project structure and roots
 
-### 1.1 Install dependencies
+All paths in this guide assume the repository is checked out so that:
+
+- The **project root folder** is the directory that contains:
+  - `package.json`
+  - `next.config.ts`
+  - `server/`
+  - `src/`
+  - `docs/`
+- The **Socket.IO backend entry file** is:
+  - `server/index.ts`
+- The **Next.js app root** is:
+  - `src/app` (with `layout.tsx` and `page.tsx`)
+
+On Render, when you see a field named **Root Directory**, you should leave it empty or set it to `.` so that it points to this project root (the directory that contains `package.json`).
+
+---
+
+## 2. Local setup
+
+### 2.1 Install dependencies
 
 From the project root:
 
@@ -18,7 +37,7 @@ npm install
 
 This installs both frontend and backend dependencies (Next.js, Socket.IO, Express, etc.).
 
-### 1.2 Environment variables
+### 2.2 Environment variables
 
 Create a `.env.local` file in the project root:
 
@@ -28,7 +47,7 @@ NEXT_PUBLIC_SOCKET_IO_URL=http://localhost:4000
 
 This tells the frontend where to find the Socket.IO backend in local development.
 
-### 1.3 Run the backend (Socket.IO server)
+### 2.3 Run the backend (Socket.IO server)
 
 From the project root:
 
@@ -40,7 +59,7 @@ npm run server
 - You can quickly confirm it is running by visiting that URL in a browser.  
   You should see: `RPS Arena Socket.IO server is running`.
 
-### 1.4 Run the frontend (Next.js app)
+### 2.4 Run the frontend (Next.js app)
 
 In a separate terminal, from the same project root:
 
@@ -50,7 +69,7 @@ npm run dev
 
 Then open `http://localhost:3000` in a browser.
 
-### 1.5 Local 2‑player test
+### 2.5 Local 2‑player test
 
 1. Open two browser windows or profiles at `http://localhost:3000`.
 2. In each window, enter a different player name.
@@ -67,7 +86,7 @@ If this works, you are ready to deploy to Render.
 
 ---
 
-## 2. Render deployment overview
+## 3. Render deployment overview
 
 Render will host two separate web services:
 
@@ -78,16 +97,16 @@ The frontend talks to the backend through `NEXT_PUBLIC_SOCKET_IO_URL`.
 
 ---
 
-## 3. Deploy the Socket.IO backend on Render
+## 4. Deploy the Socket.IO backend on Render
 
-### 3.1 Create the backend service
+### 4.1 Create the backend service
 
 1. Push your code to a Git repository (GitHub, GitLab, etc.).
 2. In the Render dashboard, click **New → Web Service**.
 3. Connect the repo that contains this project.
 4. Select the branch you want to deploy (usually `main`).
 
-### 3.2 Service settings
+### 4.2 Service settings
 
 - **Name**: e.g. `rpsarena-backend`.
 - **Environment**: `Node`.
@@ -110,7 +129,7 @@ The frontend talks to the backend through `NEXT_PUBLIC_SOCKET_IO_URL`.
 
 Click **Create Web Service** and wait for the deploy to finish.
 
-### 3.3 Verify backend deployment
+### 4.3 Verify backend deployment
 
 After deployment:
 
@@ -127,14 +146,14 @@ Keep this URL; you will need it for the frontend environment variable.
 
 ---
 
-## 4. Deploy the Next.js frontend on Render
+## 5. Deploy the Next.js frontend on Render
 
-### 4.1 Create the frontend service
+### 5.1 Create the frontend service
 
 1. In Render, click **New → Web Service** again.
 2. Use the same repo and branch as the backend.
 
-### 4.2 Service settings
+### 5.2 Service settings
 
 - **Name**: e.g. `rpsarena-frontend`.
 - **Environment**: `Node`.
@@ -152,7 +171,7 @@ Keep this URL; you will need it for the frontend environment variable.
   npm run start
   ```
 
-### 4.3 Frontend environment variable
+### 5.3 Frontend environment variable
 
 In the frontend service settings:
 
@@ -176,7 +195,7 @@ https://rpsarena-frontend.onrender.com
 
 ---
 
-## 5. End‑to‑end test on Render
+## 6. End‑to‑end test on Render
 
 1. Open the frontend URL in two different browsers or devices.
 2. In each:
@@ -191,7 +210,7 @@ Everything should behave the same way as in local development, just with higher 
 
 ---
 
-## 6. Troubleshooting checklist
+## 7. Troubleshooting checklist
 
 If something is not working in the deployed setup, check the following:
 
