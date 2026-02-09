@@ -274,116 +274,110 @@ io.on("connection", (socket) => {
       } catch (err: any) {
         socket.emit("error", { message: err?.message ?? "Create room failed" });
       }
-    }
+    },
   );
 
   // Join an existing room.
-  socket.on(
-    "joinRoom",
-    (payload: { roomId: string; playerName?: string }) => {
-      try {
-        const roomId = (payload?.roomId ?? "").trim();
-        const name = (payload?.playerName ?? currentPlayerName ?? "").trim();
-        if (!roomId || !name) {
-          socket.emit("error", {
-            message: "roomId and playerName are required",
-          });
-          return;
-        }
-
-        const player: PlayerInfo = {
-          id: name,
-          name,
-        };
-
-        const room = joinRoom(roomId, player);
-        socket.join(roomId);
-
-        // Cancel any pending deletion for this room (handles reconnection).
-        cancelPendingRoomDeletion(roomId);
-
-        // Remember where this socket lives so we can clean up on disconnect.
-        socketIdentity.set(socket.id, { roomId, playerId: player.id });
-
-        // Notify everyone in the lobby and the room.
-        io.emit("roomList", { rooms: serializeRooms() });
-        io.to(roomId).emit("roomUpdate", { room: serializeRoom(room) });
-
-        // Emit roomCreated to keep player in lobby view.
-        // Game will start only when host clicks "Start" button.
-        socket.emit("roomCreated", {
-          roomId,
-          room: { ...serializeRoom(room), gameState: room.gameState },
+  socket.on("joinRoom", (payload: { roomId: string; playerName?: string }) => {
+    try {
+      const roomId = (payload?.roomId ?? "").trim();
+      const name = (payload?.playerName ?? currentPlayerName ?? "").trim();
+      if (!roomId || !name) {
+        socket.emit("error", {
+          message: "roomId and playerName are required",
         });
-      } catch (err: any) {
-        socket.emit("error", { message: err?.message ?? "Join room failed" });
+        return;
       }
+
+      const player: PlayerInfo = {
+        id: name,
+        name,
+      };
+
+      const room = joinRoom(roomId, player);
+      socket.join(roomId);
+
+      // Cancel any pending deletion for this room (handles reconnection).
+      cancelPendingRoomDeletion(roomId);
+
+      // Remember where this socket lives so we can clean up on disconnect.
+      socketIdentity.set(socket.id, { roomId, playerId: player.id });
+
+      // Notify everyone in the lobby and the room.
+      io.emit("roomList", { rooms: serializeRooms() });
+      io.to(roomId).emit("roomUpdate", { room: serializeRoom(room) });
+
+      // Emit roomCreated to keep player in lobby view.
+      // Game will start only when host clicks "Start" button.
+      socket.emit("roomCreated", {
+        roomId,
+        room: { ...serializeRoom(room), gameState: room.gameState },
+      });
+    } catch (err: any) {
+      socket.emit("error", { message: err?.message ?? "Join room failed" });
     }
-  );
+  });
 
   // Handle host starting the game (only host can start, and only when 2 players are present).
-  socket.on(
-    "startGame",
-    (payload: { roomId: string; playerName?: string }) => {
-      try {
-        const roomId = (payload?.roomId ?? "").trim();
-        const name = (payload?.playerName ?? currentPlayerName ?? "").trim();
-        if (!roomId || !name) {
-          socket.emit("error", {
-            message: "roomId and playerName are required",
-          });
-          return;
-        }
-
-        const room = rooms.get(roomId);
-        if (!room) {
-          socket.emit("error", { message: "Room not found" });
-          return;
-        }
-
-        // Only the host can start the game.
-        if (room.hostId !== name) {
-          socket.emit("error", {
-            message: "Only the room host can start the game",
-          });
-          return;
-        }
-
-        // Need exactly 2 players to start.
-        if (room.players.length !== 2) {
-          socket.emit("error", {
-            message: "Need 2 players to start the game",
-          });
-          return;
-        }
-
-        // Start the game: set status and initialize game state.
-        room.status = "in_progress";
-        room.gameState = createInitialState();
-
-        // Notify everyone in the lobby that the room status changed.
-        io.emit("roomList", { rooms: serializeRooms() });
-
-        // Start the game for both players in the room.
-        io.to(roomId).emit("gameStart", {
-          roomId: room.id,
-          room: { ...serializeRoom(room), gameState: room.gameState },
-        });
-
-        // Send initial game state for this room.
-        io.to(roomId).emit("stateUpdate", {
-          roomId: room.id,
-          state: room.gameState,
-          roundMessage: "",
-          gameOver: false,
-        });
-      } catch (err: any) {
+  socket.on("startGame", (payload: { roomId: string; playerName?: string }) => {
+    try {
+      const roomId = (payload?.roomId ?? "").trim();
+      const name = (payload?.playerName ?? currentPlayerName ?? "").trim();
+      if (!roomId || !name) {
         socket.emit("error", {
-          message: err?.message ?? "Start game failed",
+          message: "roomId and playerName are required",
         });
+        return;
       }
+
+      const room = rooms.get(roomId);
+      if (!room) {
+        socket.emit("error", { message: "Room not found" });
+        return;
+      }
+
+      // Only the host can start the game.
+      if (room.hostId !== name) {
+        socket.emit("error", {
+          message: "Only the room host can start the game",
+        });
+        return;
+      }
+
+      // Need exactly 2 players to start.
+      if (room.players.length !== 2) {
+        socket.emit("error", {
+          message: "Need 2 players to start the game",
+        });
+        return;
+      }
+
+      // Start the game: set status and initialize game state.
+      room.status = "in_progress";
+      room.gameState = createInitialState();
+
+      // Notify everyone in the lobby that the room status changed.
+      io.emit("roomList", { rooms: serializeRooms() });
+
+      // Start the game for both players in the room.
+      io.to(roomId).emit("gameStart", {
+        roomId: room.id,
+        room: { ...serializeRoom(room), gameState: room.gameState },
+      });
+
+      // Send initial game state for this room.
+      io.to(roomId).emit("stateUpdate", {
+        roomId: room.id,
+        state: room.gameState,
+        roundMessage: "",
+        gameOver: false,
+      });
+    } catch (err: any) {
+      socket.emit("error", {
+        message: err?.message ?? "Start game failed",
+      });
     }
-  );
+  });
 
   // Handle a player's move. We accumulate moves per round and only resolve
   // when both players have submitted.
@@ -456,18 +450,24 @@ io.on("connection", (socket) => {
               result.message +
               (result.gameOverMessage ? "\n" + result.gameOverMessage : ""),
             gameOver: result.gameOver,
+            p1Move: p1Move,
+            p2Move: p2Move,
           });
         }
       } catch (err: any) {
         socket.emit("error", { message: err?.message ?? "Move failed" });
       }
-    }
+    },
   );
 
   // Handle play-again choices from both players.
   socket.on(
     "playAgainChoice",
-    (payload: { roomId: string; playerName?: string; choice: "yes" | "no" }) => {
+    (payload: {
+      roomId: string;
+      playerName?: string;
+      choice: "yes" | "no";
+    }) => {
       try {
         const roomId = (payload?.roomId ?? "").trim();
         const name = (payload?.playerName ?? currentPlayerName ?? "").trim();
@@ -529,7 +529,7 @@ io.on("connection", (socket) => {
           message: err?.message ?? "Play again choice failed",
         });
       }
-    }
+    },
   );
 
   // When a socket disconnects, remove its player from any room
@@ -596,4 +596,3 @@ server.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`RPS Arena Socket.IO server listening on port ${PORT}`);
 });
-

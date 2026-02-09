@@ -4,7 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createInitialState, GameState, Move } from "@/lib/gameLogic";
 import { createSocketClient, GameSocket } from "@/lib/socket";
 
-type AppState = "WELCOME" | "ENTER_NAME" | "LOBBY" | "ROOM_LOBBY" | "IN_GAME" | "PLAY_AGAIN";
+type AppState =
+  | "WELCOME"
+  | "ENTER_NAME"
+  | "LOBBY"
+  | "ROOM_LOBBY"
+  | "IN_GAME"
+  | "PLAY_AGAIN";
 
 interface RoomSummary {
   id: string;
@@ -68,6 +74,10 @@ const WELCOME_ART = String.raw`
 
 export default function Home() {
   const [appState, setAppState] = useState<AppState>("WELCOME");
+  // Keep appStateRef in sync with appState
+  useEffect(() => {
+    appStateRef.current = appState;
+  }, [appState]);
   const [playerName, setPlayerName] = useState("");
   const [tempName, setTempName] = useState("");
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
@@ -77,6 +87,8 @@ export default function Home() {
   const [roundView, setRoundView] = useState<RoundViewState | null>(null);
   const [myMove, setMyMove] = useState<Move | null>(null);
   const [opponentMove, setOpponentMove] = useState<Move | null>(null);
+  // Track the move selected but not yet submitted to the server
+  const [pendingMove, setPendingMove] = useState<Move | null>(null);
   const [playAgainChoice, setPlayAgainChoice] = useState<"yes" | "no" | null>(
     null,
   );
@@ -89,6 +101,10 @@ export default function Home() {
   const [roomHostId, setRoomHostId] = useState<string | null>(null);
   // Use a ref to track currentRoomId so event handlers can access the latest value.
   const currentRoomIdRef = useRef<string | null>(null);
+  // Use a ref to track roomPlayers so event handlers can access the latest value.
+  const roomPlayersRef = useRef<string[]>([]);
+  // Use a ref to track appState so event handlers can access the latest value.
+  const appStateRef = useRef<AppState>("WELCOME");
 
   // Whenever the player name changes, (re)establish a Socket.IO
   // connection to the backend and wire up listeners.
@@ -116,6 +132,7 @@ export default function Home() {
       // Use ref to get the latest currentRoomId value (avoids stale closure).
       if (payload.room.id === currentRoomIdRef.current) {
         setRoomPlayers(payload.room.players);
+        roomPlayersRef.current = payload.room.players;
         setRoomHostId(payload.room.hostId ?? null);
       }
     });
@@ -123,11 +140,19 @@ export default function Home() {
     // When a room is created or joined with < 2 players, stay in room lobby.
     s.on(
       "roomCreated",
-      (payload: { roomId: string; room: RoomSummary & { gameState?: GameState } }) => {
+      (payload: {
+        roomId: string;
+        room: RoomSummary & { gameState?: GameState };
+      }) => {
         currentRoomIdRef.current = payload.roomId;
         setCurrentRoomId(payload.roomId);
         setRoomPlayers(payload.room.players);
+        roomPlayersRef.current = payload.room.players;
         setRoomHostId(payload.room.hostId ?? null);
+        // Clear any pending moves when entering room lobby
+        setPendingMove(null);
+        setMyMove(null);
+        setOpponentMove(null);
         setAppState("ROOM_LOBBY");
       },
     );
@@ -135,16 +160,21 @@ export default function Home() {
     // When 2 players join, start the game.
     s.on(
       "gameStart",
-      (payload: { roomId: string; room: RoomSummary & { gameState?: GameState } }) => {
+      (payload: {
+        roomId: string;
+        room: RoomSummary & { gameState?: GameState };
+      }) => {
         currentRoomIdRef.current = payload.roomId;
         setCurrentRoomId(payload.roomId);
         setRoomPlayers(payload.room.players);
+        roomPlayersRef.current = payload.room.players;
         setRoundView({
           lastMessage: "",
           state: payload.room.gameState ?? createInitialState(),
         });
         setMyMove(null);
         setOpponentMove(null);
+        setPendingMove(null);
         setAppState("IN_GAME");
       },
     );
@@ -157,24 +187,57 @@ export default function Home() {
         state: GameState;
         roundMessage: string;
         gameOver: boolean;
+        p1Move?: Move;
+        p2Move?: Move;
       }) => {
-        if (payload.roomId !== currentRoomId) return;
+        // Use ref to get the latest currentRoomId value (avoids stale closure)
+        if (payload.roomId !== currentRoomIdRef.current) return;
 
         setRoundView({
           lastMessage: payload.roundMessage ?? "",
           state: payload.state,
         });
 
-        // For now, we simply clear last round's moves; if you want
-        // to show exact moves per player, you can extend the payload
-        // to include them explicitly.
-        setMyMove(null);
-        setOpponentMove(null);
+        // Extract moves from the payload and set them based on which player we are.
+        // The server sends p1Move and p2Move, we need to map them to myMove/opponentMove.
+        // Use ref to get the latest roomPlayers value (avoids stale closure).
+        if (
+          payload.p1Move &&
+          payload.p2Move &&
+          roomPlayersRef.current.length >= 2
+        ) {
+          // Determine if current player is player 1 (first in room) or player 2
+          const isPlayer1 = roomPlayersRef.current[0] === playerName;
+
+          if (isPlayer1) {
+            // We are player 1
+            setMyMove(payload.p1Move);
+            setOpponentMove(payload.p2Move);
+          } else {
+            // We are player 2
+            setMyMove(payload.p2Move);
+            setOpponentMove(payload.p1Move);
+          }
+        }
+
+        // Clear pending move since round has resolved
+        setPendingMove(null);
 
         if (payload.gameOver) {
           setAppState("PLAY_AGAIN");
           setPlayAgainChoice(null);
           setPlayAgainTimer(15);
+        } else {
+          // If game is not over, clear moves after a delay to allow players to see results
+          // then re-enable move selection for the next round
+          setTimeout(() => {
+            // Only clear if we're still in the same room and game is still in progress
+            // Use refs to avoid stale closure issues
+            if (currentRoomIdRef.current === payload.roomId && appStateRef.current === "IN_GAME") {
+              setMyMove(null);
+              setOpponentMove(null);
+            }
+          }, 3000); // 3 second delay to show round results
         }
       },
     );
@@ -182,8 +245,12 @@ export default function Home() {
     // Play-again coordination events.
     s.on(
       "playAgainUpdate",
-      (payload: { roomId: string; status: "waiting" | "rematch" | "ended" }) => {
-        if (payload.roomId !== currentRoomId) return;
+      (payload: {
+        roomId: string;
+        status: "waiting" | "rematch" | "ended";
+      }) => {
+        // Use ref to get the latest currentRoomId value (avoids stale closure)
+        if (payload.roomId !== currentRoomIdRef.current) return;
 
         if (payload.status === "rematch") {
           setRoundView({
@@ -192,6 +259,7 @@ export default function Home() {
           });
           setMyMove(null);
           setOpponentMove(null);
+          setPendingMove(null);
           setAppState("IN_GAME");
           setPlayAgainTimer(15);
           setPlayAgainChoice(null);
@@ -200,6 +268,11 @@ export default function Home() {
           currentRoomIdRef.current = null;
           setCurrentRoomId(null);
           setRoomPlayers([]);
+          roomPlayersRef.current = [];
+          // Clear moves when returning to lobby
+          setMyMove(null);
+          setOpponentMove(null);
+          setPendingMove(null);
           // Refresh lobby room list.
           s.emit("listRooms");
         }
@@ -268,12 +341,29 @@ export default function Home() {
     }
   }
 
-  // Submit a local move via Socket.IO; the backend will resolve
-  // the round once both players have submitted.
-  function handleLocalMove(move: Move) {
+  // Select a move (Rock/Paper/Scissors) - doesn't submit yet.
+  // Player must click "Submit Turn" button to actually submit.
+  function handleSelectMove(move: Move) {
     if (!currentRoomId || !playerName || !socket) return;
-    setMyMove(move);
-    socket.emit("makeMove", { roomId: currentRoomId, playerName, move });
+    // Only allow selection if we haven't submitted yet
+    if (myMove === null) {
+      setPendingMove(move);
+    }
+  }
+
+  // Submit the pending move to the server via Socket.IO.
+  // The backend will resolve the round once both players have submitted.
+  function handleSubmitMove() {
+    if (!currentRoomId || !playerName || !socket || !pendingMove) return;
+    // Submit the move to the server
+    socket.emit("makeMove", {
+      roomId: currentRoomId,
+      playerName,
+      move: pendingMove,
+    });
+    // Mark as submitted and clear pending
+    setMyMove(pendingMove);
+    setPendingMove(null);
   }
 
   // Simple countdown timer for local play-again screen
@@ -343,11 +433,14 @@ export default function Home() {
             <GameScreen
               playerName={playerName}
               roomId={currentRoomId}
+              roomPlayers={roomPlayers}
               roundView={roundView}
               healthBars={healthBars}
               myMove={myMove}
               opponentMove={opponentMove}
-              onMove={handleLocalMove}
+              pendingMove={pendingMove}
+              onSelectMove={handleSelectMove}
+              onSubmitMove={handleSubmitMove}
             />
           )}
           {appState === "PLAY_AGAIN" && (
@@ -468,8 +561,8 @@ function LobbyScreen({ playerName, rooms, onCreateOrJoin }: LobbyScreenProps) {
         </button>
       </div>
       <p className="mt-4 text-2xl text-green-500">
-        (Rooms are stored in-memory on the Socket.IO game server; lobby and
-        game state update in real time.)
+        (Rooms are stored in-memory on the Socket.IO game server; lobby and game
+        state update in real time.)
       </p>
     </div>
   );
@@ -544,29 +637,50 @@ function RoomLobbyScreen({
 interface GameScreenProps {
   playerName: string;
   roomId: string | null;
+  roomPlayers: string[];
   roundView: RoundViewState;
   healthBars: { p1: string; p2: string; p1Hp: number; p2Hp: number };
   myMove: Move | null;
   opponentMove: Move | null;
-  onMove: (move: Move) => void;
+  pendingMove: Move | null;
+  onSelectMove: (move: Move) => void;
+  onSubmitMove: () => void;
 }
 
 function GameScreen({
   playerName,
   roomId,
+  roomPlayers,
   roundView,
   healthBars,
   myMove,
   opponentMove,
-  onMove,
+  pendingMove,
+  onSelectMove,
+  onSubmitMove,
 }: GameScreenProps) {
+  // Determine if move buttons should be disabled
+  // Disable if we have a pending move or have already submitted
+  const moveButtonsDisabled = pendingMove !== null || myMove !== null;
+
+  // Show selected move (either pending or submitted)
+  const selectedMove = pendingMove || myMove;
+
+  // Determine which player we are (player 1 is first in room, player 2 is second)
+  // This determines which health bar is "yours" vs "opponent's"
+  const isPlayer1 = roomPlayers.length >= 1 && roomPlayers[0] === playerName;
+  const myHealthBar = isPlayer1 ? healthBars.p1 : healthBars.p2;
+  const myHp = isPlayer1 ? healthBars.p1Hp : healthBars.p2Hp;
+  const opponentHealthBar = isPlayer1 ? healthBars.p2 : healthBars.p1;
+  const opponentHp = isPlayer1 ? healthBars.p2Hp : healthBars.p1Hp;
+
   return (
     <div>
       <p>{`Room: ${roomId ?? "N/A"} | You are: ${playerName}`}</p>
       <p className="mt-2">Health:</p>
       <pre className="mt-1 text-2xl">
-        {`Your HP:      [${healthBars.p1}] (${healthBars.p1Hp})
-Opponent HP: [${healthBars.p2}] (${healthBars.p2Hp})`}
+        {`Your HP:      [${myHealthBar}] (${myHp})
+Opponent HP: [${opponentHealthBar}] (${opponentHp})`}
       </pre>
 
       <div className="mt-3">
@@ -574,26 +688,65 @@ Opponent HP: [${healthBars.p2}] (${healthBars.p2Hp})`}
           Enter your choice (Rock [r], Paper [p], Scissors [s]):
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
-          <AsciiButton label="ROCK" onClick={() => onMove("r")} />
-          <AsciiButton label="PAPER" onClick={() => onMove("p")} />
-          <AsciiButton label="SCISSORS" onClick={() => onMove("s")} />
+          <AsciiButton
+            label="ROCK"
+            onClick={() => onSelectMove("r")}
+            disabled={moveButtonsDisabled}
+          />
+          <AsciiButton
+            label="PAPER"
+            onClick={() => onSelectMove("p")}
+            disabled={moveButtonsDisabled}
+          />
+          <AsciiButton
+            label="SCISSORS"
+            onClick={() => onSelectMove("s")}
+            disabled={moveButtonsDisabled}
+          />
         </div>
-        <p className="mt-2 text-xl text-green-500">
-          You can also press r / p / s on your keyboard (to be wired with real
-          networking).
-        </p>
+
+        {/* Show selected move if one is selected */}
+        {selectedMove && (
+          <p className="mt-2 text-xl text-green-400">
+            Selected: {moveLabel(selectedMove)}
+          </p>
+        )}
+
+        {/* Show Submit Turn button if move is selected but not submitted */}
+        {pendingMove !== null && myMove === null && (
+          <div className="mt-3">
+            <AsciiButton label="SUBMIT TURN" onClick={onSubmitMove} />
+          </div>
+        )}
+
+        {/* Show waiting message if move is submitted but round hasn't resolved */}
+        {myMove !== null && opponentMove === null && (
+          <p className="mt-2 text-xl text-green-500">
+            Waiting for opponent to submit their turn...
+          </p>
+        )}
       </div>
 
-      <div className="mt-3 text-xl">
-        <p>{`Last move: you -> ${moveLabel(myMove)}, opponent -> ${moveLabel(
-          opponentMove,
-        )}`}</p>
-      </div>
+      {/* Show round results when both moves are available (round has been evaluated) */}
+      {myMove !== null && opponentMove !== null && (
+        <div className="mt-4 border-t border-green-700 pt-4">
+          <p className="text-3xl font-bold text-green-400 mb-3">
+            Round Results:
+          </p>
+          <div className="text-2xl space-y-2">
+            <p>{`You played: ${moveLabel(myMove)}`}</p>
+            <p>{`Opponent played: ${moveLabel(opponentMove)}`}</p>
+          </div>
+        </div>
+      )}
 
+      {/* Show round message prominently when available */}
       {roundView.lastMessage && (
-        <pre className="mt-3 whitespace-pre-wrap text-2xl">
-          {roundView.lastMessage}
-        </pre>
+        <div className="mt-4 border-t border-green-700 pt-4">
+          <pre className="whitespace-pre-wrap text-2xl text-green-300">
+            {roundView.lastMessage}
+          </pre>
+        </div>
       )}
     </div>
   );
@@ -634,16 +787,20 @@ interface AsciiButtonProps {
   label: string;
   onClick: () => void;
   active?: boolean;
+  disabled?: boolean;
 }
 
-function AsciiButton({ label, onClick, active }: AsciiButtonProps) {
+function AsciiButton({ label, onClick, active, disabled }: AsciiButtonProps) {
   // Global ASCII buttons (game + play-again) bumped up one text step for readability
   return (
     <button
       onClick={onClick}
-      className={`cursor-pointer border border-green-500 bg-black/60 px-5 py-2 text-xl hover:bg-green-500 hover:text-black ${
-        active ? "bg-green-600 text-black" : ""
-      }`}
+      disabled={disabled}
+      className={`border border-green-500 bg-black/60 px-5 py-2 text-xl ${
+        disabled
+          ? "cursor-not-allowed opacity-50"
+          : "cursor-pointer hover:bg-green-500 hover:text-black"
+      } ${active ? "bg-green-600 text-black" : ""}`}
     >
       {`[ ${label} ]`}
     </button>
