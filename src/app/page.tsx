@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createInitialState, GameState, Move } from "@/lib/gameLogic";
+import { createSocketClient, GameSocket } from "@/lib/socket";
 
 type AppState = "WELCOME" | "ENTER_NAME" | "LOBBY" | "IN_GAME" | "PLAY_AGAIN";
 
@@ -79,6 +80,130 @@ export default function Home() {
     null,
   );
   const [playAgainTimer, setPlayAgainTimer] = useState(15);
+  const [socket, setSocket] = useState<GameSocket | null>(null);
+
+  // We keep a copy of the current room's players so that we can
+  // infer the opponent's move when we receive state updates.
+  const [roomPlayers, setRoomPlayers] = useState<string[]>([]);
+
+  // Whenever the player name changes, (re)establish a Socket.IO
+  // connection to the backend and wire up listeners.
+  useEffect(() => {
+    // Do nothing until the player has chosen a name so that
+    // we can identify them to the backend.
+    if (!playerName) return;
+
+    // Create a new client connection.
+    const s = createSocketClient();
+    setSocket(s);
+
+    // Identify this client to the server so it can tag events
+    // and use the name as a stable player id.
+    s.emit("identify", { playerName });
+
+    // Request initial room list for the lobby.
+    s.emit("listRooms");
+
+    // Room list + updates keep the lobby in sync.
+    s.on("roomList", (payload: { rooms: RoomSummary[] }) => {
+      setRooms(payload.rooms ?? []);
+    });
+    s.on("roomUpdate", (payload: { room: RoomSummary }) => {
+      setRooms((prev) => {
+        const others = prev.filter((r) => r.id !== payload.room.id);
+        return [...others, payload.room];
+      });
+      if (payload.room.id === currentRoomId) {
+        setRoomPlayers(payload.room.players);
+      }
+    });
+
+    // When we successfully join a room, move into IN_GAME and
+    // reset local round state.
+    s.on(
+      "joinSuccess",
+      (payload: { roomId: string; room: RoomSummary & { gameState?: GameState } }) => {
+        setCurrentRoomId(payload.roomId);
+        setRoomPlayers(payload.room.players);
+        setRoundView({
+          lastMessage: "",
+          state: payload.room.gameState ?? createInitialState(),
+        });
+        setMyMove(null);
+        setOpponentMove(null);
+        setAppState("IN_GAME");
+      },
+    );
+
+    // Game state updates after each resolved round.
+    s.on(
+      "stateUpdate",
+      (payload: {
+        roomId: string;
+        state: GameState;
+        roundMessage: string;
+        gameOver: boolean;
+      }) => {
+        if (payload.roomId !== currentRoomId) return;
+
+        setRoundView({
+          lastMessage: payload.roundMessage ?? "",
+          state: payload.state,
+        });
+
+        // For now, we simply clear last round's moves; if you want
+        // to show exact moves per player, you can extend the payload
+        // to include them explicitly.
+        setMyMove(null);
+        setOpponentMove(null);
+
+        if (payload.gameOver) {
+          setAppState("PLAY_AGAIN");
+          setPlayAgainChoice(null);
+          setPlayAgainTimer(15);
+        }
+      },
+    );
+
+    // Play-again coordination events.
+    s.on(
+      "playAgainUpdate",
+      (payload: { roomId: string; status: "waiting" | "rematch" | "ended" }) => {
+        if (payload.roomId !== currentRoomId) return;
+
+        if (payload.status === "rematch") {
+          setRoundView({
+            lastMessage: "",
+            state: createInitialState(),
+          });
+          setMyMove(null);
+          setOpponentMove(null);
+          setAppState("IN_GAME");
+          setPlayAgainTimer(15);
+          setPlayAgainChoice(null);
+        } else if (payload.status === "ended") {
+          setAppState("LOBBY");
+          setCurrentRoomId(null);
+          setRoomPlayers([]);
+          // Refresh lobby room list.
+          s.emit("listRooms");
+        }
+      },
+    );
+
+    // Surface backend errors in the console for now; you can
+    // later show these in a toast or status area in the UI.
+    s.on("error", (payload: { message: string }) => {
+      // eslint-disable-next-line no-console
+      console.error("Socket error:", payload.message);
+    });
+
+    // Clean up when the component unmounts or playerName changes.
+    return () => {
+      s.disconnect();
+      setSocket(null);
+    };
+  }, [playerName, currentRoomId]);
 
   const healthBars = useMemo(() => {
     const state = roundView?.state ?? createInitialState();
@@ -94,69 +219,26 @@ export default function Home() {
     const trimmed = tempName.trim();
     if (!trimmed) return;
     setPlayerName(trimmed);
-    refreshRooms();
     setAppState("LOBBY");
   }
 
-  async function refreshRooms() {
-    const res = await fetch("/api/rooms", { cache: "no-store" });
-    if (!res.ok) return;
-    const data = await res.json();
-    setRooms(data.rooms as RoomSummary[]);
-  }
-
-  async function handleCreateOrJoinRoom(roomId: string) {
-    if (!playerName) return;
-    const action = rooms.find((r) => r.id === roomId) ? "join" : "create";
-    const res = await fetch("/api/rooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action,
-        roomId,
-        playerId: playerName,
-        playerName,
-      }),
-    });
-    if (!res.ok) {
-      return;
+  // Create or join a room using Socket.IO events instead of HTTP.
+  function handleCreateOrJoinRoom(roomId: string) {
+    if (!playerName || !socket) return;
+    const exists = rooms.find((r) => r.id === roomId);
+    if (exists) {
+      socket.emit("joinRoom", { roomId, playerName });
+    } else {
+      socket.emit("createRoom", { roomId, playerName });
     }
-    const data = await res.json();
-    setCurrentRoomId(data.room.id);
-    setRoundView({
-      lastMessage: "",
-      state: createInitialState(),
-    });
-    setMyMove(null);
-    setOpponentMove(null);
-    setAppState("IN_GAME");
-    refreshRooms();
   }
 
-  async function handleLocalMove(move: Move) {
-    if (!currentRoomId || !playerName) return;
-    const res = await fetch("/api/rooms/move", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        roomId: currentRoomId,
-        playerId: playerName,
-        move,
-      }),
-    });
-    if (!res.ok) return;
-    const data = await res.json();
+  // Submit a local move via Socket.IO; the backend will resolve
+  // the round once both players have submitted.
+  function handleLocalMove(move: Move) {
+    if (!currentRoomId || !playerName || !socket) return;
     setMyMove(move);
-    setOpponentMove(move);
-    setRoundView({
-      lastMessage: data.roundMessage ?? "",
-      state: data.state,
-    });
-    if (data.gameOver) {
-      setAppState("PLAY_AGAIN");
-      setPlayAgainChoice(null);
-      setPlayAgainTimer(15);
-    }
+    socket.emit("makeMove", { roomId: currentRoomId, playerName, move });
   }
 
   // Simple countdown timer for local play-again screen
@@ -171,18 +253,12 @@ export default function Home() {
 
   function handlePlayAgain(choice: "yes" | "no") {
     setPlayAgainChoice(choice);
-    if (choice === "yes") {
-      setRoundView({
-        lastMessage: "",
-        state: createInitialState(),
-      });
-      setMyMove(null);
-      setOpponentMove(null);
-      setAppState("IN_GAME");
-      setPlayAgainTimer(15);
-    } else {
-      setAppState("LOBBY");
-    }
+    if (!currentRoomId || !playerName || !socket) return;
+    socket.emit("playAgainChoice", {
+      roomId: currentRoomId,
+      playerName,
+      choice,
+    });
   }
 
   return (
@@ -348,8 +424,8 @@ function LobbyScreen({ playerName, rooms, onCreateOrJoin }: LobbyScreenProps) {
         </button>
       </div>
       <p className="mt-4 text-2xl text-green-500">
-        (Rooms are stored in-memory on the server for now; Pusher-based realtime
-        updates will be added next.)
+        (Rooms are stored in-memory on the Socket.IO game server; lobby and
+        game state update in real time.)
       </p>
     </div>
   );
