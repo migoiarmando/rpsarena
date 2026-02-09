@@ -36,6 +36,7 @@ interface Room {
   players: PlayerInfo[];
   status: RoomStatus;
   gameState: GameState;
+  hostId: string; // ID of the player who created the room
 }
 
 // In-memory room store. In a production setup you would use
@@ -56,6 +57,8 @@ interface PlayAgainChoices {
 
 const playAgainChoices = new Map<string, PlayAgainChoices>();
 
+// Track which room / player is associated with each socket so that
+// we can clean up empty rooms when players disconnect.
 interface SocketIdentity {
   roomId: string;
   playerId: string;
@@ -63,13 +66,84 @@ interface SocketIdentity {
 
 const socketIdentity = new Map<string, SocketIdentity>();
 
+// Track pending room deletions with timeouts to allow reconnection.
+// Key: roomId, Value: NodeJS.Timeout
+const pendingRoomDeletions = new Map<string, NodeJS.Timeout>();
+
+// Helper: cancel a pending room deletion if it exists.
+function cancelPendingRoomDeletion(roomId: string) {
+  const timeout = pendingRoomDeletions.get(roomId);
+  if (timeout) {
+    clearTimeout(timeout);
+    pendingRoomDeletions.delete(roomId);
+  }
+}
+
+// Helper: schedule a room deletion after a delay to allow reconnection.
+function scheduleRoomDeletion(roomId: string, delayMs: number = 5000) {
+  // Cancel any existing pending deletion for this room.
+  cancelPendingRoomDeletion(roomId);
+
+  const timeout = setTimeout(() => {
+    const room = rooms.get(roomId);
+    if (!room) {
+      // Room already deleted, nothing to do.
+      pendingRoomDeletions.delete(roomId);
+      return;
+    }
+
+    // Check if there are active sockets in the room now.
+    // If sockets exist, it means someone reconnected - don't delete.
+    const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+    const hasActiveSockets = socketsInRoom && socketsInRoom.size > 0;
+
+    if (hasActiveSockets) {
+      // Sockets exist - someone reconnected. Cancel deletion.
+      pendingRoomDeletions.delete(roomId);
+      return;
+    }
+
+    // Check if any players in room.players have active socket identities.
+    // This catches cases where a player reconnected but we haven't updated room.players yet.
+    let hasActivePlayer = false;
+    for (const player of room.players) {
+      // Check if any socket has this playerId for this roomId.
+      for (const [socketId, identity] of socketIdentity.entries()) {
+        if (identity.roomId === roomId && identity.playerId === player.id) {
+          hasActivePlayer = true;
+          break;
+        }
+      }
+      if (hasActivePlayer) break;
+    }
+
+    // Only delete if no active sockets AND no active player identities.
+    if (!hasActiveSockets && !hasActivePlayer && room.players.length === 0) {
+      rooms.delete(roomId);
+      pendingMoves.delete(roomId);
+      playAgainChoices.delete(roomId);
+      io.emit("roomList", { rooms: serializeRooms() });
+    }
+    pendingRoomDeletions.delete(roomId);
+  }, delayMs);
+
+  pendingRoomDeletions.set(roomId, timeout);
+}
+
+// Helper: serialize a single room to match frontend RoomSummary format.
+// Frontend expects players as string[] (player names), not PlayerInfo[].
+function serializeRoom(room: Room) {
+  return {
+    id: room.id,
+    players: room.players.map((p) => p.name),
+    status: room.status,
+    hostId: room.hostId,
+  };
+}
+
 // Helper: list all rooms in a simple shape for the lobby.
 function serializeRooms() {
-  return Array.from(rooms.values()).map((room) => ({
-    id: room.id,
-    players: room.players,
-    status: room.status,
-  }));
+  return Array.from(rooms.values()).map(serializeRoom);
 }
 
 // Helper: create a new room.
@@ -82,6 +156,7 @@ function createRoom(roomId: string, creator: PlayerInfo): Room {
     players: [creator],
     status: "waiting",
     gameState: createInitialState(),
+    hostId: creator.id, // Track who created the room
   };
   rooms.set(roomId, room);
   return room;
@@ -101,9 +176,8 @@ function joinRoom(roomId: string, player: PlayerInfo): Room {
     throw new Error("Room is full");
   }
   room.players.push(player);
-  room.status = "in_progress";
-  // When the second player joins, ensure we start from a fresh game state.
-  room.gameState = createInitialState();
+  // Don't change status to "in_progress" yet - wait for host to start the game.
+  // Keep status as "waiting" until host explicitly starts.
   return room;
 }
 
@@ -137,6 +211,10 @@ io.on("connection", (socket) => {
   // We store a minimal identity on the socket for convenience.
   let currentPlayerName: string | null = null;
 
+  // When a new socket connects, immediately send them the current room list
+  // so they can see available rooms right away.
+  socket.emit("roomList", { rooms: serializeRooms() });
+
   // Client should send its playerName once after connection so
   // we can use it for room membership and game tracking.
   socket.on("identify", (payload: { playerName: string }) => {
@@ -146,6 +224,8 @@ io.on("connection", (socket) => {
       return;
     }
     currentPlayerName = trimmed;
+    // After identifying, send updated room list in case anything changed.
+    socket.emit("roomList", { rooms: serializeRooms() });
   });
 
   // List all rooms for the lobby.
@@ -175,15 +255,22 @@ io.on("connection", (socket) => {
         const room = createRoom(roomId, player);
         socket.join(roomId);
 
+        // Cancel any pending deletion for this room (handles reconnection).
+        cancelPendingRoomDeletion(roomId);
+
         // Remember where this socket lives so we can clean up on disconnect.
         socketIdentity.set(socket.id, { roomId, playerId: player.id });
 
         // Notify everyone in the lobby and the room.
         io.emit("roomList", { rooms: serializeRooms() });
-        io.to(roomId).emit("roomUpdate", { room });
+        io.to(roomId).emit("roomUpdate", { room: serializeRoom(room) });
 
-        // For convenience, let this socket know it successfully joined.
-        socket.emit("joinSuccess", { roomId, room });
+        // Emit roomCreated event to keep player in lobby view.
+        // Game will start only when 2 players join.
+        socket.emit("roomCreated", {
+          roomId,
+          room: { ...serializeRoom(room), gameState: room.gameState },
+        });
       } catch (err: any) {
         socket.emit("error", { message: err?.message ?? "Create room failed" });
       }
@@ -212,12 +299,76 @@ io.on("connection", (socket) => {
         const room = joinRoom(roomId, player);
         socket.join(roomId);
 
+        // Cancel any pending deletion for this room (handles reconnection).
+        cancelPendingRoomDeletion(roomId);
+
         // Remember where this socket lives so we can clean up on disconnect.
         socketIdentity.set(socket.id, { roomId, playerId: player.id });
 
         // Notify everyone in the lobby and the room.
         io.emit("roomList", { rooms: serializeRooms() });
-        io.to(roomId).emit("roomUpdate", { room });
+        io.to(roomId).emit("roomUpdate", { room: serializeRoom(room) });
+
+        // Emit roomCreated to keep player in lobby view.
+        // Game will start only when host clicks "Start" button.
+        socket.emit("roomCreated", {
+          roomId,
+          room: { ...serializeRoom(room), gameState: room.gameState },
+        });
+      } catch (err: any) {
+        socket.emit("error", { message: err?.message ?? "Join room failed" });
+      }
+    }
+  );
+
+  // Handle host starting the game (only host can start, and only when 2 players are present).
+  socket.on(
+    "startGame",
+    (payload: { roomId: string; playerName?: string }) => {
+      try {
+        const roomId = (payload?.roomId ?? "").trim();
+        const name = (payload?.playerName ?? currentPlayerName ?? "").trim();
+        if (!roomId || !name) {
+          socket.emit("error", {
+            message: "roomId and playerName are required",
+          });
+          return;
+        }
+
+        const room = rooms.get(roomId);
+        if (!room) {
+          socket.emit("error", { message: "Room not found" });
+          return;
+        }
+
+        // Only the host can start the game.
+        if (room.hostId !== name) {
+          socket.emit("error", {
+            message: "Only the room host can start the game",
+          });
+          return;
+        }
+
+        // Need exactly 2 players to start.
+        if (room.players.length !== 2) {
+          socket.emit("error", {
+            message: "Need 2 players to start the game",
+          });
+          return;
+        }
+
+        // Start the game: set status and initialize game state.
+        room.status = "in_progress";
+        room.gameState = createInitialState();
+
+        // Notify everyone in the lobby that the room status changed.
+        io.emit("roomList", { rooms: serializeRooms() });
+
+        // Start the game for both players in the room.
+        io.to(roomId).emit("gameStart", {
+          roomId: room.id,
+          room: { ...serializeRoom(room), gameState: room.gameState },
+        });
 
         // Send initial game state for this room.
         io.to(roomId).emit("stateUpdate", {
@@ -226,10 +377,10 @@ io.on("connection", (socket) => {
           roundMessage: "",
           gameOver: false,
         });
-
-        socket.emit("joinSuccess", { roomId, room });
       } catch (err: any) {
-        socket.emit("error", { message: err?.message ?? "Join room failed" });
+        socket.emit("error", {
+          message: err?.message ?? "Start game failed",
+        });
       }
     }
   );
@@ -381,11 +532,12 @@ io.on("connection", (socket) => {
     }
   );
 
+  // When a socket disconnects, remove its player from any room
+  // it was associated with. If the room becomes empty, delete it.
   socket.on("disconnect", () => {
-    // When a socket disconnects, remove its player from any room
-    // it was associated with. If the room becomes empty, delete it.
     const identity = socketIdentity.get(socket.id);
     if (!identity) {
+      // Socket wasn't associated with any room, nothing to clean up.
       return;
     }
     socketIdentity.delete(socket.id);
@@ -393,29 +545,45 @@ io.on("connection", (socket) => {
     const { roomId, playerId } = identity;
     const room = rooms.get(roomId);
     if (!room) {
+      // Room was already deleted, nothing to do.
       return;
     }
 
-    // Remove the player from the room.
-    room.players = room.players.filter((p) => p.id !== playerId);
+    // Defensive check: verify the player actually exists in this room
+    // before attempting to remove them (handles race conditions).
+    const playerExists = room.players.some((p) => p.id === playerId);
+    if (!playerExists) {
+      // Player was already removed, nothing to do.
+      return;
+    }
 
-    if (room.players.length === 0) {
-      // No players left: remove the room and any associated state.
-      rooms.delete(roomId);
-      pendingMoves.delete(roomId);
-      playAgainChoices.delete(roomId);
-    } else {
-      // One player left: mark the room as waiting and clear any
-      // per-round state so the next opponent starts clean.
+    // Check if there are any active Socket.IO sockets still in this room.
+    // Socket.IO automatically removes disconnected sockets from rooms, so
+    // by the time we check, the disconnected socket is already gone.
+    // However, we want to keep the player in the room list temporarily
+    // to allow reconnection (e.g., page refresh).
+    const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+    const hasActiveSockets = socketsInRoom && socketsInRoom.size > 0;
+
+    // Don't immediately remove the player from room.players - keep them
+    // in the list temporarily to allow reconnection. The scheduled deletion
+    // will check if they've reconnected before actually deleting.
+    // Only remove if there are other players (multi-player scenario).
+    if (room.players.length > 1) {
+      // Multiple players: remove this one immediately since others are still there.
+      room.players = room.players.filter((p) => p.id !== playerId);
       room.status = "waiting";
       pendingMoves.set(roomId, {});
       playAgainChoices.set(roomId, {});
-
-      // Notify remaining players in the room that the other left.
-      io.to(roomId).emit("roomUpdate", { room });
+      io.to(roomId).emit("roomUpdate", { room: serializeRoom(room) });
+    } else {
+      // Single player room: keep them in the list, schedule deletion.
+      // If they reconnect within the timeout, the deletion will be cancelled.
+      room.status = "waiting";
+      scheduleRoomDeletion(roomId, 3000);
     }
 
-    // Always refresh the lobby list so stale rooms disappear.
+    // Always refresh the lobby list.
     io.emit("roomList", { rooms: serializeRooms() });
   });
 });

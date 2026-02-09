@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createInitialState, GameState, Move } from "@/lib/gameLogic";
 import { createSocketClient, GameSocket } from "@/lib/socket";
 
-type AppState = "WELCOME" | "ENTER_NAME" | "LOBBY" | "IN_GAME" | "PLAY_AGAIN";
+type AppState = "WELCOME" | "ENTER_NAME" | "LOBBY" | "ROOM_LOBBY" | "IN_GAME" | "PLAY_AGAIN";
 
 interface RoomSummary {
   id: string;
   players: string[];
   status: "waiting" | "in_progress" | "finished";
+  hostId?: string; // ID of the player who created the room
 }
 
 interface RoundViewState {
@@ -85,6 +86,9 @@ export default function Home() {
   // We keep a copy of the current room's players so that we can
   // infer the opponent's move when we receive state updates.
   const [roomPlayers, setRoomPlayers] = useState<string[]>([]);
+  const [roomHostId, setRoomHostId] = useState<string | null>(null);
+  // Use a ref to track currentRoomId so event handlers can access the latest value.
+  const currentRoomIdRef = useRef<string | null>(null);
 
   // Whenever the player name changes, (re)establish a Socket.IO
   // connection to the backend and wire up listeners.
@@ -97,13 +101,8 @@ export default function Home() {
     const s = createSocketClient();
     setSocket(s);
 
-    // Identify this client to the server so it can tag events
-    // and use the name as a stable player id.
-    s.emit("identify", { playerName });
-
-    // Request initial room list for the lobby.
-    s.emit("listRooms");
-
+    // Set up all event listeners BEFORE emitting any events to ensure
+    // we don't miss any responses (e.g., roomList sent immediately on connect).
     // Room list + updates keep the lobby in sync.
     s.on("roomList", (payload: { rooms: RoomSummary[] }) => {
       setRooms(payload.rooms ?? []);
@@ -113,16 +112,31 @@ export default function Home() {
         const others = prev.filter((r) => r.id !== payload.room.id);
         return [...others, payload.room];
       });
-      if (payload.room.id === currentRoomId) {
+      // Update room state if this is the room we're currently in.
+      // Use ref to get the latest currentRoomId value (avoids stale closure).
+      if (payload.room.id === currentRoomIdRef.current) {
         setRoomPlayers(payload.room.players);
+        setRoomHostId(payload.room.hostId ?? null);
       }
     });
 
-    // When we successfully join a room, move into IN_GAME and
-    // reset local round state.
+    // When a room is created or joined with < 2 players, stay in room lobby.
     s.on(
-      "joinSuccess",
+      "roomCreated",
       (payload: { roomId: string; room: RoomSummary & { gameState?: GameState } }) => {
+        currentRoomIdRef.current = payload.roomId;
+        setCurrentRoomId(payload.roomId);
+        setRoomPlayers(payload.room.players);
+        setRoomHostId(payload.room.hostId ?? null);
+        setAppState("ROOM_LOBBY");
+      },
+    );
+
+    // When 2 players join, start the game.
+    s.on(
+      "gameStart",
+      (payload: { roomId: string; room: RoomSummary & { gameState?: GameState } }) => {
+        currentRoomIdRef.current = payload.roomId;
         setCurrentRoomId(payload.roomId);
         setRoomPlayers(payload.room.players);
         setRoundView({
@@ -183,6 +197,7 @@ export default function Home() {
           setPlayAgainChoice(null);
         } else if (payload.status === "ended") {
           setAppState("LOBBY");
+          currentRoomIdRef.current = null;
           setCurrentRoomId(null);
           setRoomPlayers([]);
           // Refresh lobby room list.
@@ -198,12 +213,27 @@ export default function Home() {
       console.error("Socket error:", payload.message);
     });
 
+    // Now that all listeners are set up, emit events.
+    // Identify this client to the server so it can tag events
+    // and use the name as a stable player id.
+    s.emit("identify", { playerName });
+
+    // Request initial room list for the lobby.
+    // Note: Server also sends roomList automatically on connect,
+    // but requesting here ensures we get the latest state.
+    s.emit("listRooms");
+
     // Clean up when the component unmounts or playerName changes.
+    // Note: currentRoomId is NOT in the dependency array because:
+    // - We use currentRoomIdRef to track the current room in event handlers (avoids stale closures)
+    // - The socket connection should persist across room changes to avoid missing events
+    // - Reconnecting when currentRoomId changes can cause race conditions where roomUpdate
+    //   events are missed during the reconnection window
     return () => {
       s.disconnect();
       setSocket(null);
     };
-  }, [playerName, currentRoomId]);
+  }, [playerName]);
 
   const healthBars = useMemo(() => {
     const state = roundView?.state ?? createInitialState();
@@ -225,6 +255,11 @@ export default function Home() {
   // Create or join a room using Socket.IO events instead of HTTP.
   function handleCreateOrJoinRoom(roomId: string) {
     if (!playerName || !socket) return;
+    // If we are already inside a room (either waiting or in game),
+    // ignore additional create/join requests so the user stays
+    // logically scoped to a single room at a time.
+    if (currentRoomId) return;
+
     const exists = rooms.find((r) => r.id === roomId);
     if (exists) {
       socket.emit("joinRoom", { roomId, playerName });
@@ -293,6 +328,15 @@ export default function Home() {
               playerName={playerName}
               rooms={rooms}
               onCreateOrJoin={handleCreateOrJoinRoom}
+            />
+          )}
+          {appState === "ROOM_LOBBY" && (
+            <RoomLobbyScreen
+              playerName={playerName}
+              roomId={currentRoomId}
+              players={roomPlayers}
+              hostId={roomHostId ?? undefined}
+              socket={socket}
             />
           )}
           {appState === "IN_GAME" && roundView && (
@@ -427,6 +471,72 @@ function LobbyScreen({ playerName, rooms, onCreateOrJoin }: LobbyScreenProps) {
         (Rooms are stored in-memory on the Socket.IO game server; lobby and
         game state update in real time.)
       </p>
+    </div>
+  );
+}
+
+interface RoomLobbyScreenProps {
+  playerName: string;
+  roomId: string | null;
+  players: string[];
+  hostId?: string;
+  socket: GameSocket | null;
+}
+
+function RoomLobbyScreen({
+  playerName,
+  roomId,
+  players,
+  hostId,
+  socket,
+}: RoomLobbyScreenProps) {
+  const playerCount = players.length;
+  const isHost = hostId === playerName;
+  const canStart = isHost && playerCount === 2;
+
+  function handleStartGame() {
+    if (!roomId || !socket || !canStart) return;
+    socket.emit("startGame", { roomId, playerName });
+  }
+
+  return (
+    <div>
+      <p className="text-4xl">{`Room: ${roomId ?? "N/A"}`}</p>
+      <p className="mt-2 text-3xl">{`You are: ${playerName}`}</p>
+      {isHost && (
+        <p className="mt-1 text-2xl text-green-500">(You are the host)</p>
+      )}
+      <p className="mt-4 text-3xl">
+        {playerCount === 1
+          ? "Waiting for opponent..."
+          : `Players: ${playerCount}/2`}
+      </p>
+      <div className="mt-4">
+        <p className="text-2xl">Players in room:</p>
+        <ul className="mt-2 text-xl">
+          {players.map((p) => (
+            <li key={p} className="text-green-400">
+              • {p} {p === hostId ? "(Host)" : ""}
+            </li>
+          ))}
+        </ul>
+      </div>
+      {playerCount === 2 && (
+        <div className="mt-6">
+          {isHost ? (
+            <div>
+              <p className="mb-3 text-2xl text-green-500">
+                Both players are ready!
+              </p>
+              <AsciiButton label="START GAME" onClick={handleStartGame} />
+            </div>
+          ) : (
+            <p className="text-2xl text-green-500">
+              Waiting for host to start the game...
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
