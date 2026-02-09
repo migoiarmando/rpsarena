@@ -56,6 +56,13 @@ interface PlayAgainChoices {
 
 const playAgainChoices = new Map<string, PlayAgainChoices>();
 
+interface SocketIdentity {
+  roomId: string;
+  playerId: string;
+}
+
+const socketIdentity = new Map<string, SocketIdentity>();
+
 // Helper: list all rooms in a simple shape for the lobby.
 function serializeRooms() {
   return Array.from(rooms.values()).map((room) => ({
@@ -168,6 +175,9 @@ io.on("connection", (socket) => {
         const room = createRoom(roomId, player);
         socket.join(roomId);
 
+        // Remember where this socket lives so we can clean up on disconnect.
+        socketIdentity.set(socket.id, { roomId, playerId: player.id });
+
         // Notify everyone in the lobby and the room.
         io.emit("roomList", { rooms: serializeRooms() });
         io.to(roomId).emit("roomUpdate", { room });
@@ -201,6 +211,9 @@ io.on("connection", (socket) => {
 
         const room = joinRoom(roomId, player);
         socket.join(roomId);
+
+        // Remember where this socket lives so we can clean up on disconnect.
+        socketIdentity.set(socket.id, { roomId, playerId: player.id });
 
         // Notify everyone in the lobby and the room.
         io.emit("roomList", { rooms: serializeRooms() });
@@ -368,10 +381,42 @@ io.on("connection", (socket) => {
     }
   );
 
-  // Optional: clean up on disconnect. For now we keep rooms in memory even
-  // if a player disconnects, to keep logic simple for a small game.
   socket.on("disconnect", () => {
-    // No-op for now; you could mark rooms as finished or remove players here.
+    // When a socket disconnects, remove its player from any room
+    // it was associated with. If the room becomes empty, delete it.
+    const identity = socketIdentity.get(socket.id);
+    if (!identity) {
+      return;
+    }
+    socketIdentity.delete(socket.id);
+
+    const { roomId, playerId } = identity;
+    const room = rooms.get(roomId);
+    if (!room) {
+      return;
+    }
+
+    // Remove the player from the room.
+    room.players = room.players.filter((p) => p.id !== playerId);
+
+    if (room.players.length === 0) {
+      // No players left: remove the room and any associated state.
+      rooms.delete(roomId);
+      pendingMoves.delete(roomId);
+      playAgainChoices.delete(roomId);
+    } else {
+      // One player left: mark the room as waiting and clear any
+      // per-round state so the next opponent starts clean.
+      room.status = "waiting";
+      pendingMoves.set(roomId, {});
+      playAgainChoices.set(roomId, {});
+
+      // Notify remaining players in the room that the other left.
+      io.to(roomId).emit("roomUpdate", { room });
+    }
+
+    // Always refresh the lobby list so stale rooms disappear.
+    io.emit("roomList", { rooms: serializeRooms() });
   });
 });
 
