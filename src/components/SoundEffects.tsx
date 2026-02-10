@@ -19,6 +19,8 @@ export function SoundEffects() {
       const isDelete = e.key === "Backspace" || e.key === "Delete";
       if (isInput && (isCharacter || isDelete)) {
         playType();
+      } else if (isInput && e.key === "Enter") {
+        playClick();
       }
     };
 

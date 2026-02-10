@@ -16,7 +16,7 @@ interface RoomSummary {
   id: string;
   players: string[];
   status: "waiting" | "in_progress" | "finished";
-  hostId?: string; 
+  hostId?: string;
 }
 
 interface RoundViewState {
@@ -201,11 +201,14 @@ export default function Home() {
           setPlayAgainTimer(15);
         } else {
           setTimeout(() => {
-            if (currentRoomIdRef.current === payload.roomId && appStateRef.current === "IN_GAME") {
+            if (
+              currentRoomIdRef.current === payload.roomId &&
+              appStateRef.current === "IN_GAME"
+            ) {
               setMyMove(null);
               setOpponentMove(null);
             }
-          }, 3000); 
+          }, 3000);
         }
       },
     );
@@ -324,7 +327,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black text-green-400 px-4 py-6">
+    <div className="flex min-h-screen items-center justify-center bg-black text-green-400 px-4 py-6 sm:px-6 md:py-8">
       <div className="w-full max-w-6xl border border-green-500 bg-black/90 shadow-lg">
         <div className="relative flex items-center border-b border-green-500 px-3 py-1 text-xs">
           <span className="flex items-center gap-1">
@@ -337,7 +340,7 @@ export default function Home() {
           </span>
         </div>
 
-        <div className="px-8 py-6 font-mono text-3xl leading-relaxed">
+        <div className="px-4 py-4 font-mono text-lg leading-relaxed sm:px-6 sm:text-xl md:px-8 md:py-6 md:text-2xl lg:text-3xl">
           {appState === "WELCOME" && (
             <WelcomeScreen onStart={() => setAppState("ENTER_NAME")} />
           )}
@@ -401,12 +404,14 @@ interface WelcomeScreenProps {
 function WelcomeScreen({ onStart }: WelcomeScreenProps) {
   return (
     <div>
-      <pre className="whitespace-pre text-[14px] leading-[14px]">
-        {WELCOME_ART}
-      </pre>
-      <div className="mt-4 flex justify-center">
+      <div className="overflow-x-auto overflow-y-hidden">
+        <pre className="min-w-max whitespace-pre text-[5px] leading-[5px] sm:text-[12px] sm:leading-[12px] md:text-[14px] md:leading-[14px]">
+          {WELCOME_ART}
+        </pre>
+      </div>
+      <div className="mt-4 flex justify-center sm:mt-6">
         <button
-          className="border border-green-500 px-6 py-2 text-2xl leading-none hover:bg-green-500 hover:text-black"
+          className="border border-green-500 px-4 py-2 text-lg leading-none hover:bg-green-500 hover:text-black sm:px-6 sm:py-2 sm:text-2xl"
           onClick={onStart}
         >
           [ PLAY GAME ]
@@ -434,7 +439,7 @@ function NameScreen({
       <div className="mt-3 flex items-center gap-2">
         <span className="text-green-500">&gt;</span>
         <input
-          className="flex-1 bg-black text-green-400 outline-none border-b border-dotted border-green-500"
+          className="min-w-0 flex-1 bg-black text-green-400 outline-none border-b border-dotted border-green-500"
           value={tempName}
           onChange={(e) => onTempNameChange(e.target.value)}
           onKeyDown={(e) => {
@@ -443,7 +448,7 @@ function NameScreen({
           autoFocus
         />
         <button
-          className="ml-4 border border-green-500 px-6 py-2 text-2xl leading-none hover:bg-green-500 hover:text-black"
+          className="ml-2 border border-green-500 px-4 py-2 text-lg leading-none hover:bg-green-500 hover:text-black sm:ml-4 sm:px-6 sm:text-2xl"
           onClick={onConfirm}
         >
           OK
@@ -462,18 +467,22 @@ interface LobbyScreenProps {
 function LobbyScreen({ playerName, rooms, onCreateOrJoin }: LobbyScreenProps) {
   return (
     <div>
-      <p className="text-4xl">{`Welcome, ${playerName}.`}</p>
-      <p className="mt-1 text-3xl">Lobby - available rooms:</p>
+      <p className="text-2xl sm:text-3xl md:text-4xl">{`Welcome, ${playerName}.`}</p>
+      <p className="mt-1 text-xl sm:text-2xl md:text-3xl">
+        Lobby - available rooms:
+      </p>
       <div className="mt-2">
         {rooms.length === 0 && (
-          <p className="text-2xl">No rooms yet. Create one to start.</p>
+          <p className="text-lg sm:text-xl md:text-2xl">
+            No rooms yet. Create one to start.
+          </p>
         )}
         {rooms.map((room) => (
           <div
             key={room.id}
-            className="mt-1 flex items-center justify-between border border-green-700 bg-black/60 px-2 py-1"
+            className="mt-1 flex flex-col gap-2 border border-green-700 bg-black/60 px-2 py-1 sm:flex-row sm:items-center sm:justify-between"
           >
-            <span className="text-2xl">
+            <span className="wrap-break-word text-lg sm:text-xl md:text-2xl">
               Room <span className="font-bold">{room.id}</span> -{" "}
               {room.players.length}/2 players - {room.status}
             </span>
@@ -488,7 +497,7 @@ function LobbyScreen({ playerName, rooms, onCreateOrJoin }: LobbyScreenProps) {
       </div>
       <div className="mt-3">
         <button
-          className="border border-green-500 px-5 py-2 text-2xl hover:bg-green-500 hover:text-black"
+          className="border border-green-500 px-4 py-2 text-base hover:bg-green-500 hover:text-black sm:px-5 sm:text-xl md:text-2xl"
           onClick={() =>
             onCreateOrJoin(`room-${Math.floor(Math.random() * 1000)}`)
           }
@@ -496,7 +505,7 @@ function LobbyScreen({ playerName, rooms, onCreateOrJoin }: LobbyScreenProps) {
           [ CREATE RANDOM ROOM ]
         </button>
       </div>
-      <p className="mt-4 text-2xl text-green-500">
+      <p className="mt-4 text-base text-green-500 sm:text-xl md:text-2xl">
         (Rooms are stored in-memory on the Socket.IO game server; lobby and game
         state update in real time.)
       </p>
@@ -530,19 +539,21 @@ function RoomLobbyScreen({
 
   return (
     <div>
-      <p className="text-4xl">{`Room: ${roomId ?? "N/A"}`}</p>
-      <p className="mt-2 text-3xl">{`You are: ${playerName}`}</p>
+      <p className="text-2xl sm:text-3xl md:text-4xl">{`Room: ${roomId ?? "N/A"}`}</p>
+      <p className="mt-2 text-xl sm:text-2xl md:text-3xl">{`You are: ${playerName}`}</p>
       {isHost && (
-        <p className="mt-1 text-2xl text-green-500">(You are the host)</p>
+        <p className="mt-1 text-lg sm:text-xl md:text-2xl text-green-500">
+          (You are the host)
+        </p>
       )}
-      <p className="mt-4 text-3xl">
+      <p className="mt-4 text-xl sm:text-2xl md:text-3xl">
         {playerCount === 1
           ? "Waiting for opponent..."
           : `Players: ${playerCount}/2`}
       </p>
       <div className="mt-4">
-        <p className="text-2xl">Players in room:</p>
-        <ul className="mt-2 text-xl">
+        <p className="text-lg sm:text-xl md:text-2xl">Players in room:</p>
+        <ul className="mt-2 text-base sm:text-lg md:text-xl">
           {players.map((p) => (
             <li key={p} className="text-green-400">
               • {p} {p === hostId ? "(Host)" : ""}
@@ -554,13 +565,13 @@ function RoomLobbyScreen({
         <div className="mt-6">
           {isHost ? (
             <div>
-              <p className="mb-3 text-2xl text-green-500">
+              <p className="mb-3 text-lg sm:text-xl md:text-2xl text-green-500">
                 Both players are ready!
               </p>
               <AsciiButton label="START GAME" onClick={handleStartGame} />
             </div>
           ) : (
-            <p className="text-2xl text-green-500">
+            <p className="text-lg sm:text-xl md:text-2xl text-green-500">
               Waiting for host to start the game...
             </p>
           )}
@@ -604,36 +615,45 @@ function GameScreen({
   const myHp = isPlayer1 ? healthBars.p1Hp : healthBars.p2Hp;
   const opponentHealthBar = isPlayer1 ? healthBars.p2 : healthBars.p1;
   const opponentHp = isPlayer1 ? healthBars.p2Hp : healthBars.p1Hp;
-  
+
   const personalizedMessage = roundView.lastMessage
     ? roundView.lastMessage
-        .replace(/Player 1 wins this round!/g, isPlayer1 ? "You win this round!" : "Opponent wins this round!")
-        .replace(/Player 2 wins this round!/g, isPlayer1 ? "Opponent wins this round!" : "You win this round!")
-        .replace(/Player 1 Streak: (\d+), Player 2 Streak: (\d+)/g, (match, p1Streak, p2Streak) => {
-          if (isPlayer1) {
-            return `Your Streak: ${p1Streak}, Opponent Streak: ${p2Streak}`;
-          } else {
-            return `Opponent Streak: ${p1Streak}, Your Streak: ${p2Streak}`;
-          }
-        })
+        .replace(
+          /Player 1 wins this round!/g,
+          isPlayer1 ? "You win this round!" : "Opponent wins this round!",
+        )
+        .replace(
+          /Player 2 wins this round!/g,
+          isPlayer1 ? "Opponent wins this round!" : "You win this round!",
+        )
+        .replace(
+          /Player 1 Streak: (\d+), Player 2 Streak: (\d+)/g,
+          (match, p1Streak, p2Streak) => {
+            if (isPlayer1) {
+              return `Your Streak: ${p1Streak}, Opponent Streak: ${p2Streak}`;
+            } else {
+              return `Opponent Streak: ${p1Streak}, Your Streak: ${p2Streak}`;
+            }
+          },
+        )
         .replace(/Player 1/g, isPlayer1 ? "You" : "Opponent")
         .replace(/Player 2/g, isPlayer1 ? "Opponent" : "You")
     : "";
 
   return (
     <div>
-      <p>{`Room: ${roomId ?? "N/A"} | You are: ${playerName}`}</p>
-      <p className="mt-2">Health:</p>
-      <pre className="mt-1 text-2xl">
+      <p className="text-base sm:text-lg md:text-xl">{`Room: ${roomId ?? "N/A"} | You are: ${playerName}`}</p>
+      <p className="mt-2 text-base sm:text-lg md:text-xl">Health:</p>
+      <pre className="mt-1 text-lg sm:text-xl md:text-2xl">
         {`Your HP:      [${myHealthBar}] (${myHp})
 Opponent HP: [${opponentHealthBar}] (${opponentHp})`}
       </pre>
 
       <div className="mt-3">
-        <p className="text-2xl">
+        <p className="text-lg sm:text-xl md:text-2xl">
           Enter your choice (Rock [r], Paper [p], Scissors [s]):
         </p>
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-1.5 sm:gap-2">
           <AsciiButton
             label="ROCK"
             onClick={() => onSelectMove("r")}
@@ -652,7 +672,7 @@ Opponent HP: [${opponentHealthBar}] (${opponentHp})`}
         </div>
 
         {selectedMove && (
-          <p className="mt-2 text-xl text-green-400">
+          <p className="mt-2 text-lg sm:text-xl text-green-400">
             Selected: {moveLabel(selectedMove)}
           </p>
         )}
@@ -664,7 +684,7 @@ Opponent HP: [${opponentHealthBar}] (${opponentHp})`}
         )}
 
         {myMove !== null && opponentMove === null && (
-          <p className="mt-2 text-xl text-green-500">
+          <p className="mt-2 text-lg sm:text-xl text-green-500">
             Waiting for opponent to submit their turn...
           </p>
         )}
@@ -672,10 +692,10 @@ Opponent HP: [${opponentHealthBar}] (${opponentHp})`}
 
       {myMove !== null && opponentMove !== null && (
         <div className="mt-4 border-t border-green-700 pt-4">
-          <p className="text-3xl font-bold text-green-400 mb-3">
+          <p className="text-xl font-bold text-green-400 mb-3 sm:text-2xl md:text-3xl">
             Round Results:
           </p>
-          <div className="text-2xl space-y-2">
+          <div className="text-lg space-y-2 sm:text-xl md:text-2xl">
             <p>{`You played: ${moveLabel(myMove)}`}</p>
             <p>{`Opponent played: ${moveLabel(opponentMove)}`}</p>
           </div>
@@ -684,7 +704,7 @@ Opponent HP: [${opponentHealthBar}] (${opponentHp})`}
 
       {personalizedMessage && (
         <div className="mt-4 border-t border-green-700 pt-4">
-          <pre className="whitespace-pre-wrap text-2xl text-green-300">
+          <pre className="whitespace-pre-wrap text-xl text-green-300 sm:text-2xl">
             {personalizedMessage}
           </pre>
         </div>
@@ -702,9 +722,18 @@ interface PlayAgainScreenProps {
   roomPlayers: string[];
 }
 
-function PlayAgainScreen({ timer, choice, onChoose, roundMessage, playerName, roomPlayers }: PlayAgainScreenProps) {
+function PlayAgainScreen({
+  timer,
+  choice,
+  onChoose,
+  roundMessage,
+  playerName,
+  roomPlayers,
+}: PlayAgainScreenProps) {
   const isPlayer1 = roomPlayers.length >= 1 && roomPlayers[0] === playerName;
-  const gameOverLine = roundMessage.split("\n").find((line) => line.includes("Wins!"));
+  const gameOverLine = roundMessage
+    .split("\n")
+    .find((line) => line.includes("Wins!"));
   const resultMessage = gameOverLine
     ? gameOverLine
         .replace(/Game over,\s*/g, "")
@@ -715,12 +744,16 @@ function PlayAgainScreen({ timer, choice, onChoose, roundMessage, playerName, ro
 
   return (
     <div>
-      <p className="text-2xl">Game over.</p>
+      <p className="text-lg sm:text-xl md:text-2xl">Game over.</p>
       {resultMessage && (
-        <p className="mt-2 text-2xl font-bold text-green-400">{resultMessage}</p>
+        <p className="mt-2 text-lg font-bold text-green-400 sm:text-xl md:text-2xl">
+          {resultMessage}
+        </p>
       )}
-      <p className="mt-1 text-2xl">Play again? Timer: {timer}s</p>
-      <div className="mt-2 flex gap-2">
+      <p className="mt-1 text-lg sm:text-xl md:text-2xl">
+        Play again? Timer: {timer}s
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
         <AsciiButton
           label="YES"
           onClick={() => onChoose("yes")}
@@ -748,7 +781,7 @@ function AsciiButton({ label, onClick, active, disabled }: AsciiButtonProps) {
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`border border-green-500 bg-black/60 px-5 py-2 text-xl ${
+      className={`border border-green-500 bg-black/60 px-3 py-1.5 text-base sm:px-4 sm:py-2 sm:text-lg md:px-5 md:text-xl ${
         disabled
           ? "cursor-not-allowed opacity-50"
           : "cursor-pointer hover:bg-green-500 hover:text-black"

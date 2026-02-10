@@ -49,8 +49,8 @@ export function BackgroundMusic() {
   }, [volume]);
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded border border-green-700 bg-black/80 px-3 py-2">
-      <label htmlFor="music-volume" className="text-sm text-green-400">
+    <div className="fixed bottom-2 right-2 z-50 flex items-center gap-2 rounded border border-green-700 bg-black/80 px-2 py-1.5 text-xs sm:bottom-4 sm:right-4 sm:px-3 sm:py-2 sm:text-sm">
+      <label htmlFor="music-volume" className="text-green-400">
         Music
       </label>
       <input
@@ -61,7 +61,7 @@ export function BackgroundMusic() {
         step={0.05}
         value={volume}
         onChange={(e) => setVolume(parseFloat(e.target.value))}
-        className="h-2 w-24 accent-green-500"
+        className="h-2 w-20 accent-green-500 sm:w-24"
         aria-label="Background music volume"
       />
     </div>
