@@ -357,12 +357,16 @@ export default function Home() {
 
   useEffect(() => {
     if (appState !== "PLAY_AGAIN") return;
+    if (playAgainChoice !== null) return;
+
     if (playAgainTimer <= 0) {
+      handlePlayAgain("no");
       return;
     }
+
     const id = setTimeout(() => setPlayAgainTimer((t) => t - 1), 1000);
     return () => clearTimeout(id);
-  }, [appState, playAgainTimer]);
+  }, [appState, playAgainTimer, playAgainChoice]);
 
   function handlePlayAgain(choice: "yes" | "no") {
     setPlayAgainChoice(choice);
@@ -401,6 +405,14 @@ export default function Home() {
     });
   }
 
+  function handleBackToName() {
+    setAppState("ENTER_NAME");
+  }
+
+  function handleBackToWelcome() {
+    setAppState("WELCOME");
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-black text-green-400 px-4 py-6 sm:px-6 md:py-8">
       <div className="w-full max-w-6xl border border-green-500 bg-black/90 shadow-lg">
@@ -420,19 +432,35 @@ export default function Home() {
             <WelcomeScreen onStart={() => setAppState("ENTER_NAME")} />
           )}
           {appState === "ENTER_NAME" && (
-            <NameScreen
-              tempName={tempName}
-              onTempNameChange={setTempName}
-              onConfirm={handleConfirmName}
-            />
+            <div className="relative">
+              <button
+                className="absolute right-0 top-0 border border-green-500 px-3 py-1 text-base cursor-pointer hover:bg-green-500 hover:text-black sm:px-4 sm:text-lg md:px-5 md:text-xl"
+                onClick={handleBackToWelcome}
+              >
+                [ BACK ]
+              </button>
+              <NameScreen
+                tempName={tempName}
+                onTempNameChange={setTempName}
+                onConfirm={handleConfirmName}
+              />
+            </div>
           )}
           {appState === "LOBBY" && (
-            <LobbyScreen
-              playerName={playerName}
-              rooms={rooms}
-              onCreateOrJoin={handleCreateOrJoinRoom}
-              onPlayWithBot={handlePlayWithBot}
-            />
+            <div className="relative">
+              <button
+                className="absolute right-0 top-0 border border-green-500 px-3 py-1 text-base cursor-pointer hover:bg-green-500 hover:text-black sm:px-4 sm:text-lg md:px-5 md:text-xl"
+                onClick={handleBackToName}
+              >
+                [ BACK ]
+              </button>
+              <LobbyScreen
+                playerName={playerName}
+                rooms={rooms}
+                onCreateOrJoin={handleCreateOrJoinRoom}
+                onPlayWithBot={handlePlayWithBot}
+              />
+            </div>
           )}
           {appState === "ROOM_LOBBY" && (
             <RoomLobbyScreen
@@ -487,7 +515,7 @@ function WelcomeScreen({ onStart }: WelcomeScreenProps) {
       </div>
       <div className="mt-4 flex justify-center sm:mt-6">
         <button
-          className="border border-green-500 px-4 py-2 text-lg leading-none hover:bg-green-500 hover:text-black sm:px-6 sm:py-2 sm:text-2xl"
+          className="border border-green-500 px-4 py-2 text-lg leading-none cursor-pointer hover:bg-green-500 hover:text-black sm:px-6 sm:py-2 sm:text-2xl"
           onClick={onStart}
         >
           [ PLAY GAME ]
@@ -524,7 +552,7 @@ function NameScreen({
           autoFocus
         />
         <button
-          className="ml-2 border border-green-500 px-4 py-2 text-lg leading-none hover:bg-green-500 hover:text-black sm:ml-4 sm:px-6 sm:text-2xl"
+          className="ml-2 border border-green-500 px-4 py-2 text-lg leading-none cursor-pointer hover:bg-green-500 hover:text-black sm:ml-4 sm:px-6 sm:text-2xl"
           onClick={onConfirm}
         >
           OK
@@ -569,7 +597,7 @@ function LobbyScreen({
               {room.players.length}/2 players - {room.status}
             </span>
             <button
-              className="border border-green-500 px-3 py-1 text-base hover:bg-green-500 hover:text-black"
+              className="border border-green-500 px-3 py-1 text-base cursor-pointer hover:bg-green-500 hover:text-black"
               onClick={() => onCreateOrJoin(room.id)}
             >
               [ JOIN / START ]
@@ -579,7 +607,7 @@ function LobbyScreen({
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <button
-          className="border border-green-500 px-4 py-2 text-base hover:bg-green-500 hover:text-black sm:px-5 sm:text-xl md:text-2xl"
+          className="border border-green-500 px-4 py-2 text-base cursor-pointer hover:bg-green-500 hover:text-black sm:px-5 sm:text-xl md:text-2xl"
           onClick={() =>
             onCreateOrJoin(`room-${Math.floor(Math.random() * 1000)}`)
           }
@@ -587,16 +615,12 @@ function LobbyScreen({
           [ CREATE RANDOM ROOM ]
         </button>
         <button
-          className="border border-green-500 px-4 py-2 text-base hover:bg-green-500 hover:text-black sm:px-5 sm:text-xl md:text-2xl"
+          className="border border-green-500 px-4 py-2 text-base cursor-pointer hover:bg-green-500 hover:text-black sm:px-5 sm:text-xl md:text-2xl"
           onClick={onPlayWithBot}
         >
           [ PLAY WITH BOT ]
         </button>
       </div>
-      <p className="mt-4 text-base text-green-500 sm:text-xl md:text-2xl">
-        (Rooms are stored in-memory on the Socket.IO game server; lobby and game
-        state update in real time.)
-      </p>
     </div>
   );
 }
