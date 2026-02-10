@@ -383,6 +383,9 @@ export default function Home() {
               timer={playAgainTimer}
               choice={playAgainChoice}
               onChoose={handlePlayAgain}
+              roundMessage={roundView?.lastMessage ?? ""}
+              playerName={playerName}
+              roomPlayers={roomPlayers}
             />
           )}
         </div>
@@ -694,12 +697,28 @@ interface PlayAgainScreenProps {
   timer: number;
   choice: "yes" | "no" | null;
   onChoose: (choice: "yes" | "no") => void;
+  roundMessage: string;
+  playerName: string;
+  roomPlayers: string[];
 }
 
-function PlayAgainScreen({ timer, choice, onChoose }: PlayAgainScreenProps) {
+function PlayAgainScreen({ timer, choice, onChoose, roundMessage, playerName, roomPlayers }: PlayAgainScreenProps) {
+  const isPlayer1 = roomPlayers.length >= 1 && roomPlayers[0] === playerName;
+  const gameOverLine = roundMessage.split("\n").find((line) => line.includes("Wins!"));
+  const resultMessage = gameOverLine
+    ? gameOverLine
+        .replace(/Game over,\s*/g, "")
+        .replace(/Player 1 Wins!/g, isPlayer1 ? "You win!" : "Opponent wins!")
+        .replace(/Player 2 Wins!/g, isPlayer1 ? "Opponent wins!" : "You win!")
+        .trim()
+    : "";
+
   return (
     <div>
       <p className="text-2xl">Game over.</p>
+      {resultMessage && (
+        <p className="mt-2 text-2xl font-bold text-green-400">{resultMessage}</p>
+      )}
       <p className="mt-1 text-2xl">Play again? Timer: {timer}s</p>
       <div className="mt-2 flex gap-2">
         <AsciiButton
@@ -713,10 +732,6 @@ function PlayAgainScreen({ timer, choice, onChoose }: PlayAgainScreenProps) {
           active={choice === "no"}
         />
       </div>
-      <p className="mt-2 text-lg text-green-500">
-        In the full version, a rematch will only start if both players agree
-        before the timer runs out; otherwise you&apos;ll return to the lobby.
-      </p>
     </div>
   );
 }
