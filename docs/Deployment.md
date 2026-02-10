@@ -210,7 +210,28 @@ Everything should behave the same way as in local development, just with higher 
 
 ---
 
-## 7. Troubleshooting checklist
+## 7. Keeping the frontend awake
+
+On Render’s free tier, the frontend service spins down after a period of inactivity (~15 minutes). The next visitor then sees “SERVICE WAKING UP” / “APPLICATION LOADING” while the instance starts.
+
+- The in-app **KeepAlive** (see `src/lib/keepAlive.ts`) only pings the **backend** while someone has the app open. It does not keep the frontend itself awake.
+- To reduce frontend cold starts, use an external ping service to hit the **frontend** URL on a schedule. The backend is left as is (no external pings needed for it).
+
+**Using cron-job.org (frontend only):**
+
+1. Sign up / log in at [cron-job.org](https://cron-job.org).
+2. Create a new cron job:
+   - **Title:** e.g. `RPS Arena frontend keep-alive`.
+   - **URL:** Your frontend URL (e.g. `https://your-frontend.onrender.com` or `https://your-frontend.onrender.com/api/health` for a lightweight health endpoint). Use `https://` for Render.
+   - **Enable job:** On.
+3. Set **Execution schedule** to **Every 15 minutes** so the frontend is pinged before Render’s idle timeout (crontab: `*/15 * * * *`).
+4. Use **TEST RUN** to confirm the URL responds, then **CREATE**.
+
+The frontend will then receive a GET request every 15 minutes and stay warm. Backend behavior is unchanged.
+
+---
+
+## 8. Troubleshooting checklist
 
 If something is not working in the deployed setup, check the following:
 
