@@ -1,6 +1,3 @@
-// Pure game logic ported from the original C `server.c`
-// This module does NOT know about networking or transport.
-
 export type Move = 'r' | 'p' | 's';
 
 export const MAX_HP = 100;
@@ -20,7 +17,7 @@ export interface GameState {
 }
 
 export interface RoundResult {
-  winner: 0 | 1 | 2; // 0 = draw, 1 = p1, 2 = p2 (matches C code)
+  winner: 0 | 1 | 2;
   message: string;
   state: GameState;
   gameOver: boolean;
@@ -38,7 +35,6 @@ export function createInitialState(): GameState {
   };
 }
 
-// Equivalent to game_round in C
 export function gameRound(p1Choice: Move, p2Choice: Move): 0 | 1 | 2 {
   if (p1Choice === p2Choice) return 0;
   if (
@@ -62,7 +58,6 @@ export function applyRound(
   let roundWinnerMsg: string;
 
   if (result === 1) {
-    // Player 1 wins
     state.p2Hp -= state.p1Damage;
     if (state.p2Hp < 0) state.p2Hp = 0;
     state.p1Streak += 1;
@@ -74,7 +69,6 @@ export function applyRound(
         '\nWinstreak, Double damage activated for Player 1!\n';
     }
   } else if (result === 2) {
-    // Player 2 wins
     state.p1Hp -= state.p2Damage;
     if (state.p1Hp < 0) state.p1Hp = 0;
     state.p2Streak += 1;
@@ -86,7 +80,6 @@ export function applyRound(
         '\nWinstreak, Double damage activated for Player 2!\n';
     }
   } else {
-    // Draw
     state.p1Streak = 0;
     state.p2Streak = 0;
     state.p1Damage = BASE_DAMAGE;
@@ -94,10 +87,8 @@ export function applyRound(
     roundWinnerMsg = '\nThis round is a draw!\n';
   }
 
-  // Append streak information
   roundWinnerMsg += `\nPlayer 1 Streak: ${state.p1Streak}, Player 2 Streak: ${state.p2Streak}\n`;
 
-  // Check for game over condition (matches C end_msg behavior)
   let gameOver = false;
   let gameOverMessage: string | undefined;
 

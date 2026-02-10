@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createInitialState, GameState, Move } from "@/lib/gameLogic";
+import {
+  applyRound,
+  createInitialState,
+  GameState,
+  Move,
+} from "@/lib/gameLogic";
 import { createSocketClient, GameSocket } from "@/lib/socket";
 
 type AppState =
@@ -96,6 +101,7 @@ export default function Home() {
   const [socket, setSocket] = useState<GameSocket | null>(null);
   const [roomPlayers, setRoomPlayers] = useState<string[]>([]);
   const [roomHostId, setRoomHostId] = useState<string | null>(null);
+  const [botMode, setBotMode] = useState(false);
   const currentRoomIdRef = useRef<string | null>(null);
   const roomPlayersRef = useRef<string[]>([]);
   const appStateRef = useRef<AppState>("WELCOME");
@@ -289,15 +295,57 @@ export default function Home() {
     }
   }
 
+  function handlePlayWithBot() {
+    if (!playerName || currentRoomId) return;
+    setBotMode(true);
+    currentRoomIdRef.current = "bot";
+    setCurrentRoomId("bot");
+    setRoomPlayers([playerName, "Bot"]);
+    roomPlayersRef.current = [playerName, "Bot"];
+    setRoundView({ lastMessage: "", state: createInitialState() });
+    setMyMove(null);
+    setOpponentMove(null);
+    setPendingMove(null);
+    setAppState("IN_GAME");
+  }
+
   function handleSelectMove(move: Move) {
-    if (!currentRoomId || !playerName || !socket) return;
+    if (!currentRoomId || !playerName) return;
+    if (currentRoomId !== "bot" && !socket) return;
     if (myMove === null) {
       setPendingMove(move);
     }
   }
 
   function handleSubmitMove() {
-    if (!currentRoomId || !playerName || !socket || !pendingMove) return;
+    if (!currentRoomId || !playerName || !pendingMove) return;
+    if (currentRoomId === "bot" && roundView) {
+      const moves: Move[] = ["r", "p", "s"];
+      const botMove = moves[Math.floor(Math.random() * moves.length)];
+      const result = applyRound(roundView.state, pendingMove, botMove);
+      const fullMessage =
+        result.message +
+        (result.gameOverMessage ? "\n" + result.gameOverMessage : "");
+
+      setRoundView({ lastMessage: fullMessage, state: result.state });
+      setMyMove(pendingMove);
+      setOpponentMove(botMove);
+      setPendingMove(null);
+
+      if (result.gameOver) {
+        setAppState("PLAY_AGAIN");
+        setPlayAgainChoice(null);
+        setPlayAgainTimer(15);
+      } else {
+        setTimeout(() => {
+          setMyMove(null);
+          setOpponentMove(null);
+        }, 3000);
+      }
+      return;
+    }
+
+    if (!socket) return;
     socket.emit("makeMove", {
       roomId: currentRoomId,
       playerName,
@@ -318,6 +366,33 @@ export default function Home() {
 
   function handlePlayAgain(choice: "yes" | "no") {
     setPlayAgainChoice(choice);
+
+    if (currentRoomId === "bot") {
+      if (choice === "yes") {
+        setRoundView({ lastMessage: "", state: createInitialState() });
+        setMyMove(null);
+        setOpponentMove(null);
+        setPendingMove(null);
+        setAppState("IN_GAME");
+        setPlayAgainChoice(null);
+        setPlayAgainTimer(15);
+      } else {
+        setBotMode(false);
+        currentRoomIdRef.current = null;
+        setCurrentRoomId(null);
+        setRoomPlayers([]);
+        roomPlayersRef.current = [];
+        setRoundView(null);
+        setMyMove(null);
+        setOpponentMove(null);
+        setPendingMove(null);
+        setPlayAgainChoice(null);
+        setAppState("LOBBY");
+        socket?.emit("listRooms");
+      }
+      return;
+    }
+
     if (!currentRoomId || !playerName || !socket) return;
     socket.emit("playAgainChoice", {
       roomId: currentRoomId,
@@ -356,6 +431,7 @@ export default function Home() {
               playerName={playerName}
               rooms={rooms}
               onCreateOrJoin={handleCreateOrJoinRoom}
+              onPlayWithBot={handlePlayWithBot}
             />
           )}
           {appState === "ROOM_LOBBY" && (
@@ -462,9 +538,15 @@ interface LobbyScreenProps {
   playerName: string;
   rooms: RoomSummary[];
   onCreateOrJoin: (roomId: string) => void;
+  onPlayWithBot: () => void;
 }
 
-function LobbyScreen({ playerName, rooms, onCreateOrJoin }: LobbyScreenProps) {
+function LobbyScreen({
+  playerName,
+  rooms,
+  onCreateOrJoin,
+  onPlayWithBot,
+}: LobbyScreenProps) {
   return (
     <div>
       <p className="text-2xl sm:text-3xl md:text-4xl">{`Welcome, ${playerName}.`}</p>
@@ -495,7 +577,7 @@ function LobbyScreen({ playerName, rooms, onCreateOrJoin }: LobbyScreenProps) {
           </div>
         ))}
       </div>
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap gap-2">
         <button
           className="border border-green-500 px-4 py-2 text-base hover:bg-green-500 hover:text-black sm:px-5 sm:text-xl md:text-2xl"
           onClick={() =>
@@ -503,6 +585,12 @@ function LobbyScreen({ playerName, rooms, onCreateOrJoin }: LobbyScreenProps) {
           }
         >
           [ CREATE RANDOM ROOM ]
+        </button>
+        <button
+          className="border border-green-500 px-4 py-2 text-base hover:bg-green-500 hover:text-black sm:px-5 sm:text-xl md:text-2xl"
+          onClick={onPlayWithBot}
+        >
+          [ PLAY WITH BOT ]
         </button>
       </div>
       <p className="mt-4 text-base text-green-500 sm:text-xl md:text-2xl">
@@ -642,7 +730,11 @@ function GameScreen({
 
   return (
     <div>
-      <p className="text-base sm:text-lg md:text-xl">{`Room: ${roomId ?? "N/A"} | You are: ${playerName}`}</p>
+      <p className="text-base sm:text-lg md:text-xl">
+        {roomId === "bot"
+          ? `Vs Bot | You are: ${playerName}`
+          : `Room: ${roomId ?? "N/A"} | You are: ${playerName}`}
+      </p>
       <p className="mt-2 text-base sm:text-lg md:text-xl">Health:</p>
       <pre className="mt-1 text-lg sm:text-xl md:text-2xl">
         {`Your HP:      [${myHealthBar}] (${myHp})
