@@ -1,20 +1,23 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+
 const MUSIC_URL = "/rpsarenamusic.mp3";
+const DEFAULT_VOLUME = 0.5;
 
 export function BackgroundMusic() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const triedUserInteraction = useRef(false);
+  const [volume, setVolume] = useState(DEFAULT_VOLUME);
 
   useEffect(() => {
     const audio = new Audio(MUSIC_URL);
     audio.loop = true;
+    audio.volume = volume;
     audioRef.current = audio;
 
     const play = () => {
-      audio.play().catch(() => {
-      });
+      audio.play().catch(() => {});
     };
 
     play();
@@ -41,5 +44,26 @@ export function BackgroundMusic() {
     };
   }, []);
 
-  return null;
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume;
+  }, [volume]);
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded border border-green-700 bg-black/80 px-3 py-2">
+      <label htmlFor="music-volume" className="text-sm text-green-400">
+        Music
+      </label>
+      <input
+        id="music-volume"
+        type="range"
+        min={0}
+        max={1}
+        step={0.05}
+        value={volume}
+        onChange={(e) => setVolume(parseFloat(e.target.value))}
+        className="h-2 w-24 accent-green-500"
+        aria-label="Background music volume"
+      />
+    </div>
+  );
 }
