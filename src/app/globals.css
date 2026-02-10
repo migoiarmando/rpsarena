@@ -24,4 +24,15 @@ body {
   background: #000000;
   color: #00ff7f;
   font-family: "VT323", monospace;
+  cursor: url("/custom-cursor.png") 0 0, auto;
+}
+
+.cursor-pointer {
+  cursor: url("/custom-cursor-pointer.png") 0 0, pointer;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  cursor: url("/custom-insertion-point.png") 0 0, text;
 }
